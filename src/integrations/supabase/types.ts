@@ -9,13 +9,173 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      clients: {
+        Row: {
+          contact_person: string | null
+          created_at: string | null
+          email: string
+          id: string
+          name: string
+          notes: string | null
+          phone: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          contact_person?: string | null
+          created_at?: string | null
+          email: string
+          id?: string
+          name: string
+          notes?: string | null
+          phone?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          contact_person?: string | null
+          created_at?: string | null
+          email?: string
+          id?: string
+          name?: string
+          notes?: string | null
+          phone?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string | null
+          email: string
+          id: string
+          name: string | null
+          role: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          email: string
+          id: string
+          name?: string | null
+          role?: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          email?: string
+          id?: string
+          name?: string | null
+          role?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      quotes: {
+        Row: {
+          access_difficulty: string
+          base_quote: number
+          client_id: string
+          created_at: string | null
+          distance_from_warehouse: number
+          equivalent_room_count: number
+          final_quote: number
+          id: string
+          listing_price: number
+          property_address: string
+          property_type: string
+          quote_number: string
+          room_data: Json
+          room_rate: number
+          status: string
+          styling_type: string
+          updated_at: string | null
+          user_id: string
+          variation: number
+        }
+        Insert: {
+          access_difficulty: string
+          base_quote: number
+          client_id: string
+          created_at?: string | null
+          distance_from_warehouse: number
+          equivalent_room_count: number
+          final_quote: number
+          id?: string
+          listing_price: number
+          property_address: string
+          property_type: string
+          quote_number: string
+          room_data: Json
+          room_rate?: number
+          status?: string
+          styling_type: string
+          updated_at?: string | null
+          user_id: string
+          variation: number
+        }
+        Update: {
+          access_difficulty?: string
+          base_quote?: number
+          client_id?: string
+          created_at?: string | null
+          distance_from_warehouse?: number
+          equivalent_room_count?: number
+          final_quote?: number
+          id?: string
+          listing_price?: number
+          property_address?: string
+          property_type?: string
+          quote_number?: string
+          room_data?: Json
+          room_rate?: number
+          status?: string
+          styling_type?: string
+          updated_at?: string | null
+          user_id?: string
+          variation?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quotes_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      settings: {
+        Row: {
+          id: string
+          setting_key: string
+          setting_type: string
+          setting_value: Json
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          setting_key: string
+          setting_type: string
+          setting_value: Json
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          setting_key?: string
+          setting_type?: string
+          setting_value?: Json
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      generate_quote_number: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
     }
     Enums: {
       [_ in never]: never

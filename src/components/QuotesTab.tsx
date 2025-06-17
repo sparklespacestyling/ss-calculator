@@ -1,5 +1,5 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Search, Filter, MoreVertical } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -10,78 +10,120 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
+
+interface Quote {
+  id: string;
+  quote_number: string;
+  final_quote: number;
+  status: string;
+  created_at: string;
+  property_type: string;
+  styling_type: string;
+  property_address: string;
+  clients: {
+    name: string;
+    email: string;
+  };
+}
 
 const QuotesTab = () => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [quotes, setQuotes] = useState<Quote[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
 
-  // Mock quotes data - in real app this would come from Supabase
-  const quotes = [
-    {
-      id: 'Q-2024-001',
-      customer: 'Sarah Johnson',
-      contact: 'sarah.j@email.com',
-      address: '123 Collins Street, Melbourne VIC 3000',
-      amount: 420,
-      status: 'Pending',
-      date: '2024-01-15',
-      propertyType: 'Apartment',
-      styling: 'Full',
-    },
-    {
-      id: 'Q-2024-002',
-      customer: 'Michael Chen',
-      contact: 'mchen@email.com',
-      address: '456 Chapel Street, South Yarra VIC 3141',
-      amount: 650,
-      status: 'Accepted',
-      date: '2024-01-14',
-      propertyType: 'House',
-      styling: 'Partial',
-    },
-    {
-      id: 'Q-2024-003',
-      customer: 'Emma Wilson',
-      contact: 'emma.wilson@email.com',
-      address: '789 Toorak Road, Toorak VIC 3142',
-      amount: 890,
-      status: 'Pending',
-      date: '2024-01-14',
-      propertyType: 'House',
-      styling: 'Full',
-    },
-    {
-      id: 'Q-2024-004',
-      customer: 'David Lee',
-      contact: 'david.lee@email.com',
-      address: '321 Flinders Lane, Melbourne VIC 3000',
-      amount: 320,
-      status: 'Rejected',
-      date: '2024-01-13',
-      propertyType: 'Apartment',
-      styling: 'Partial',
-    },
-    {
-      id: 'Q-2024-005',
-      customer: 'Lisa Thompson',
-      contact: 'lisa.t@email.com',
-      address: '654 Burke Road, Camberwell VIC 3124',
-      amount: 780,
-      status: 'Accepted',
-      date: '2024-01-12',
-      propertyType: 'House',
-      styling: 'Full',
-    },
-  ];
+  useEffect(() => {
+    fetchQuotes();
+  }, []);
+
+  const fetchQuotes = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('quotes')
+        .select(`
+          id,
+          quote_number,
+          final_quote,
+          status,
+          created_at,
+          property_type,
+          styling_type,
+          property_address,
+          clients (
+            name,
+            email
+          )
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        toast({
+          title: "Error",
+          description: "Failed to fetch quotes",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      setQuotes(data || []);
+    } catch (error) {
+      console.error('Error fetching quotes:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleQuoteClick = (quoteId: string) => {
+    // Add haptic feedback for mobile
+    if (navigator.vibrate) {
+      navigator.vibrate(50);
+    }
+    console.log('Quote clicked:', quoteId);
+    // TODO: Navigate to quote detail view
+  };
+
+  const handleStatusChange = async (quoteId: string, newStatus: string) => {
+    try {
+      const { error } = await supabase
+        .from('quotes')
+        .update({ 
+          status: newStatus,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', quoteId);
+
+      if (error) {
+        toast({
+          title: "Error",
+          description: "Failed to update quote status",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      toast({
+        title: "Success",
+        description: `Quote ${newStatus} successfully`,
+      });
+
+      // Refresh quotes
+      fetchQuotes();
+    } catch (error) {
+      console.error('Error updating quote status:', error);
+    }
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'Accepted':
+      case 'accepted':
         return 'bg-green-100 text-green-700 border-green-200';
-      case 'Rejected':
+      case 'rejected':
         return 'bg-red-100 text-red-700 border-red-200';
-      case 'Pending':
+      case 'pending':
         return 'bg-yellow-100 text-yellow-700 border-yellow-200';
-      case 'Voided':
+      case 'voided':
         return 'bg-gray-100 text-gray-700 border-gray-200';
       default:
         return 'bg-gray-100 text-gray-700 border-gray-200';
@@ -89,10 +131,20 @@ const QuotesTab = () => {
   };
 
   const filteredQuotes = quotes.filter(quote =>
-    quote.customer.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    quote.address.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    quote.id.toLowerCase().includes(searchQuery.toLowerCase())
+    quote.clients?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    quote.property_address.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    quote.quote_number.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  if (loading) {
+    return (
+      <div className="p-4 space-y-4">
+        <div className="text-center py-8">
+          <p className="text-slate-500">Loading quotes...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 space-y-4">
@@ -120,19 +172,19 @@ const QuotesTab = () => {
         </div>
         <div className="bg-yellow-50 rounded-lg p-3 text-center">
           <p className="text-lg font-bold text-yellow-700">
-            {quotes.filter(q => q.status === 'Pending').length}
+            {quotes.filter(q => q.status === 'pending').length}
           </p>
           <p className="text-xs text-yellow-600">Pending</p>
         </div>
         <div className="bg-green-50 rounded-lg p-3 text-center">
           <p className="text-lg font-bold text-green-700">
-            {quotes.filter(q => q.status === 'Accepted').length}
+            {quotes.filter(q => q.status === 'accepted').length}
           </p>
           <p className="text-xs text-green-600">Accepted</p>
         </div>
         <div className="bg-red-50 rounded-lg p-3 text-center">
           <p className="text-lg font-bold text-red-700">
-            {quotes.filter(q => q.status === 'Rejected').length}
+            {quotes.filter(q => q.status === 'rejected').length}
           </p>
           <p className="text-xs text-red-600">Rejected</p>
         </div>
@@ -140,68 +192,98 @@ const QuotesTab = () => {
 
       {/* Quotes List */}
       <div className="space-y-3">
-        {filteredQuotes.map((quote) => (
-          <Card key={quote.id} className="border-0 shadow-sm hover:shadow-md transition-shadow">
-            <CardContent className="p-4">
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-sm font-semibold text-slate-900">
-                      {quote.id}
-                    </span>
-                    <span
-                      className={`px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(
-                        quote.status
-                      )}`}
-                    >
-                      {quote.status}
-                    </span>
+        {filteredQuotes.length === 0 ? (
+          <div className="text-center py-8">
+            {searchQuery ? (
+              <p className="text-slate-500">No quotes found matching "{searchQuery}"</p>
+            ) : (
+              <p className="text-slate-500">No quotes found. Create your first quote using the + button!</p>
+            )}
+          </div>
+        ) : (
+          filteredQuotes.map((quote) => (
+            <Card key={quote.id} className="border-0 shadow-sm hover:shadow-md transition-shadow">
+              <CardContent className="p-4">
+                <div
+                  onClick={() => handleQuoteClick(quote.id)}
+                  className="cursor-pointer hover:bg-slate-50 active:bg-slate-100 transition-colors -m-4 p-4 rounded-lg"
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-sm font-semibold text-slate-900">
+                          {quote.quote_number}
+                        </span>
+                        <span
+                          className={`px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(
+                            quote.status
+                          )}`}
+                        >
+                          {quote.status.charAt(0).toUpperCase() + quote.status.slice(1)}
+                        </span>
+                      </div>
+                      <p className="text-base font-medium text-slate-800 mb-1">
+                        {quote.clients?.name}
+                      </p>
+                      <p className="text-sm text-slate-600 line-clamp-1">
+                        {quote.property_address}
+                      </p>
+                    </div>
+                    <div className="flex items-start gap-2 ml-4">
+                      <div className="text-right">
+                        <p className="text-xl font-bold text-slate-900">
+                          ${quote.final_quote.toLocaleString()}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {new Date(quote.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleQuoteClick(quote.id)}>
+                            View Details
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => console.log('Edit quote:', quote.id)}>
+                            Edit Quote
+                          </DropdownMenuItem>
+                          {quote.status !== 'accepted' && (
+                            <DropdownMenuItem onClick={() => handleStatusChange(quote.id, 'accepted')}>
+                              Accept
+                            </DropdownMenuItem>
+                          )}
+                          {quote.status !== 'rejected' && (
+                            <DropdownMenuItem onClick={() => handleStatusChange(quote.id, 'rejected')}>
+                              Reject
+                            </DropdownMenuItem>
+                          )}
+                          {quote.status !== 'voided' && (
+                            <DropdownMenuItem 
+                              className="text-red-600" 
+                              onClick={() => handleStatusChange(quote.id, 'voided')}
+                            >
+                              Void
+                            </DropdownMenuItem>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </div>
-                  <p className="text-base font-medium text-slate-800 mb-1">
-                    {quote.customer}
-                  </p>
-                  <p className="text-sm text-slate-600 line-clamp-1">
-                    {quote.address}
-                  </p>
-                </div>
-                <div className="flex items-start gap-2 ml-4">
-                  <div className="text-right">
-                    <p className="text-xl font-bold text-slate-900">
-                      ${quote.amount}
-                    </p>
-                    <p className="text-xs text-slate-500">{quote.date}</p>
+                  
+                  <div className="flex items-center justify-between text-xs text-slate-500">
+                    <span>{quote.property_type} • {quote.styling_type} Styling</span>
+                    <span>{quote.clients?.email}</span>
                   </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8">
-                        <MoreVertical className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem>View Details</DropdownMenuItem>
-                      <DropdownMenuItem>Edit Quote</DropdownMenuItem>
-                      <DropdownMenuItem>Accept</DropdownMenuItem>
-                      <DropdownMenuItem>Reject</DropdownMenuItem>
-                      <DropdownMenuItem className="text-red-600">Void</DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
                 </div>
-              </div>
-              
-              <div className="flex items-center justify-between text-xs text-slate-500">
-                <span>{quote.propertyType} • {quote.styling} Styling</span>
-                <span>{quote.contact}</span>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+              </CardContent>
+            </Card>
+          ))
+        )}
       </div>
-
-      {filteredQuotes.length === 0 && searchQuery && (
-        <div className="text-center py-8">
-          <p className="text-slate-500">No quotes found matching "{searchQuery}"</p>
-        </div>
-      )}
     </div>
   );
 };

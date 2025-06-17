@@ -1,16 +1,113 @@
 
+import { useState, useEffect } from 'react';
 import { User, Settings as SettingsIcon, LogOut, Database, DollarSign } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
+
+interface UserProfile {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+}
 
 const SettingsTab = () => {
-  // Mock user data - in real app this would come from authentication
-  const currentUser = {
-    name: 'John Smith',
-    email: 'john.smith@sparkle-space.com',
-    role: 'admin', // or 'regular'
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    fetchUserProfile();
+  }, []);
+
+  const fetchUserProfile = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (user) {
+        const { data: profile, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+
+        if (error) {
+          console.error('Error fetching profile:', error);
+          toast({
+            title: "Error",
+            description: "Failed to fetch user profile",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        setCurrentUser(profile);
+      }
+    } catch (error) {
+      console.error('Error fetching user:', error);
+    } finally {
+      setLoading(false);
+    }
   };
+
+  const handleLogout = async () => {
+    try {
+      const { error } = await supabase.auth.signOut();
+      
+      if (error) {
+        toast({
+          title: "Error",
+          description: "Failed to sign out",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      toast({
+        title: "Success",
+        description: "Logged out successfully",
+      });
+
+      // The auth state change will handle the redirect
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
+  };
+
+  const handleAdminAction = (action: string) => {
+    // Add haptic feedback for mobile
+    if (navigator.vibrate) {
+      navigator.vibrate(50);
+    }
+    
+    toast({
+      title: "Feature Coming Soon",
+      description: `${action} functionality will be available soon`,
+    });
+  };
+
+  if (loading) {
+    return (
+      <div className="p-4 space-y-4">
+        <div className="text-center py-8">
+          <p className="text-slate-500">Loading profile...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!currentUser) {
+    return (
+      <div className="p-4 space-y-4">
+        <div className="text-center py-8">
+          <p className="text-slate-500">Unable to load user profile</p>
+        </div>
+      </div>
+    );
+  }
 
   const isAdmin = currentUser.role === 'admin';
 
@@ -28,11 +125,11 @@ const SettingsTab = () => {
           <div className="flex items-center gap-4">
             <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center">
               <span className="text-white font-bold text-xl">
-                {currentUser.name.split(' ').map(n => n[0]).join('')}
+                {currentUser.name ? currentUser.name.split(' ').map(n => n[0]).join('') : currentUser.email[0].toUpperCase()}
               </span>
             </div>
             <div className="flex-1">
-              <h3 className="font-semibold text-slate-900">{currentUser.name}</h3>
+              <h3 className="font-semibold text-slate-900">{currentUser.name || 'User'}</h3>
               <p className="text-sm text-slate-600">{currentUser.email}</p>
               <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium mt-1 ${
                 isAdmin 
@@ -47,11 +144,21 @@ const SettingsTab = () => {
           <Separator />
           
           <div className="space-y-2">
-            <Button variant="outline" className="w-full justify-start" size="sm">
+            <Button 
+              variant="outline" 
+              className="w-full justify-start" 
+              size="sm"
+              onClick={() => handleAdminAction('Edit Profile')}
+            >
               <User className="h-4 w-4 mr-2" />
               Edit Profile
             </Button>
-            <Button variant="outline" className="w-full justify-start" size="sm">
+            <Button 
+              variant="outline" 
+              className="w-full justify-start" 
+              size="sm"
+              onClick={() => handleAdminAction('Account Settings')}
+            >
               <SettingsIcon className="h-4 w-4 mr-2" />
               Account Settings
             </Button>
@@ -69,23 +176,48 @@ const SettingsTab = () => {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            <Button variant="outline" className="w-full justify-start" size="sm">
+            <Button 
+              variant="outline" 
+              className="w-full justify-start" 
+              size="sm"
+              onClick={() => handleAdminAction('Property Types & Styling Options')}
+            >
               <Database className="h-4 w-4 mr-2" />
               Property Types & Styling Options
             </Button>
-            <Button variant="outline" className="w-full justify-start" size="sm">
+            <Button 
+              variant="outline" 
+              className="w-full justify-start" 
+              size="sm"
+              onClick={() => handleAdminAction('Room Types & Weights')}
+            >
               <SettingsIcon className="h-4 w-4 mr-2" />
               Room Types & Weights
             </Button>
-            <Button variant="outline" className="w-full justify-start" size="sm">
+            <Button 
+              variant="outline" 
+              className="w-full justify-start" 
+              size="sm"
+              onClick={() => handleAdminAction('Rate Configuration')}
+            >
               <DollarSign className="h-4 w-4 mr-2" />
               Rate Configuration
             </Button>
-            <Button variant="outline" className="w-full justify-start" size="sm">
+            <Button 
+              variant="outline" 
+              className="w-full justify-start" 
+              size="sm"
+              onClick={() => handleAdminAction('Warehouse Settings')}
+            >
               <SettingsIcon className="h-4 w-4 mr-2" />
               Warehouse Settings
             </Button>
-            <Button variant="outline" className="w-full justify-start" size="sm">
+            <Button 
+              variant="outline" 
+              className="w-full justify-start" 
+              size="sm"
+              onClick={() => handleAdminAction('User Management')}
+            >
               <User className="h-4 w-4 mr-2" />
               User Management
             </Button>
@@ -101,15 +233,30 @@ const SettingsTab = () => {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
-          <Button variant="outline" className="w-full justify-start" size="sm">
+          <Button 
+            variant="outline" 
+            className="w-full justify-start" 
+            size="sm"
+            onClick={() => handleAdminAction('Notifications')}
+          >
             <SettingsIcon className="h-4 w-4 mr-2" />
             Notifications
           </Button>
-          <Button variant="outline" className="w-full justify-start" size="sm">
+          <Button 
+            variant="outline" 
+            className="w-full justify-start" 
+            size="sm"
+            onClick={() => handleAdminAction('Preferences')}
+          >
             <SettingsIcon className="h-4 w-4 mr-2" />
             Preferences
           </Button>
-          <Button variant="outline" className="w-full justify-start" size="sm">
+          <Button 
+            variant="outline" 
+            className="w-full justify-start" 
+            size="sm"
+            onClick={() => handleAdminAction('Help & Support')}
+          >
             <SettingsIcon className="h-4 w-4 mr-2" />
             Help & Support
           </Button>
@@ -133,6 +280,7 @@ const SettingsTab = () => {
       <Button 
         variant="outline" 
         className="w-full border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 hover:border-red-300"
+        onClick={handleLogout}
       >
         <LogOut className="h-4 w-4 mr-2" />
         Sign Out
