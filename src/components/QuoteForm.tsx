@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,6 +6,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Calculator, User, MapPin, DollarSign, Home } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 
 interface QuoteFormProps {
   onClose: () => void;
@@ -34,10 +35,33 @@ interface QuoteFormData {
   rooms: RoomData;
 }
 
+interface RateSettings {
+  apartment_low_threshold: number;
+  apartment_high_threshold: number;
+  house_low_threshold: number;
+  house_high_threshold: number;
+  distance_close_threshold: number;
+  distance_medium_min: number;
+  distance_medium_max: number;
+  distance_far_min: number;
+  penalty_discount: number;
+  reward_bonus: number;
+  distance_close_discount: number;
+  distance_medium_fee: number;
+  distance_far_fee: number;
+  access_standard_fee: number;
+  access_difficult_fee: number;
+  access_very_difficult_fee: number;
+}
+
 const QuoteForm = ({ onClose }: QuoteFormProps) => {
-  const [isAdmin] = useState(true); // Mock - in real app this would come from auth context
-  
-  // Default room types with weights
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [rateSettings, setRateSettings] = useState<RateSettings | null>(null);
+  const [roomSettings, setRoomSettings] = useState<any>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const { toast } = useToast();
+
+  // Default room types with weights (fallback)
   const defaultRooms = {
     'Foyer/Entry': { count: 0, percentage: 100, weight: 0.5 },
     'Living Room': { count: 0, percentage: 100, weight: 2 },
@@ -78,6 +102,60 @@ const QuoteForm = ({ onClose }: QuoteFormProps) => {
     finalQuote: 0,
   });
 
+  useEffect(() => {
+    fetchCurrentUser();
+    fetchSettings();
+  }, []);
+
+  const fetchCurrentUser = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+      setCurrentUser(profile);
+    }
+  };
+
+  const fetchSettings = async () => {
+    try {
+      // Fetch rate settings
+      const { data: rateData } = await supabase
+        .from('settings')
+        .select('setting_value')
+        .eq('setting_key', 'rate_configuration')
+        .single();
+
+      if (rateData) {
+        setRateSettings(rateData.setting_value as RateSettings);
+      }
+
+      // Fetch room settings
+      const { data: roomData } = await supabase
+        .from('settings')
+        .select('setting_value')
+        .eq('setting_key', 'room_types')
+        .single();
+
+      if (roomData) {
+        setRoomSettings(roomData.setting_value);
+        // Update room weights and default counts from settings
+        const updatedRooms = { ...formData.rooms };
+        Object.entries(roomData.setting_value).forEach(([roomType, config]: [string, any]) => {
+          if (updatedRooms[roomType]) {
+            updatedRooms[roomType].weight = config.weight;
+            updatedRooms[roomType].count = config.default_count;
+          }
+        });
+        setFormData(prev => ({ ...prev, rooms: updatedRooms }));
+      }
+    } catch (error) {
+      console.error('Error fetching settings:', error);
+    }
+  };
+
   // Set default access difficulty based on property type
   useEffect(() => {
     if (formData.propertyType === 'Apartment' && !formData.accessDifficulty) {
@@ -90,7 +168,7 @@ const QuoteForm = ({ onClose }: QuoteFormProps) => {
   // Calculate quote whenever relevant fields change
   useEffect(() => {
     calculateQuote();
-  }, [formData.rooms, formData.roomRate, formData.listingPrice, formData.distanceFromWarehouse, formData.accessDifficulty, formData.propertyType]);
+  }, [formData.rooms, formData.roomRate, formData.listingPrice, formData.distanceFromWarehouse, formData.accessDifficulty, formData.propertyType, rateSettings]);
 
   const calculateQuote = () => {
     // Calculate equivalent room count
@@ -101,28 +179,50 @@ const QuoteForm = ({ onClose }: QuoteFormProps) => {
     // Calculate base quote
     const baseQuote = equivalentRooms * formData.roomRate;
 
-    // Calculate penalty/reward rates
+    // Calculate penalty/reward rates using settings or defaults
     let totalRate = 0;
+    const settings = rateSettings || {
+      apartment_low_threshold: 800000,
+      apartment_high_threshold: 1000000,
+      house_low_threshold: 1000000,
+      house_high_threshold: 1500000,
+      distance_close_threshold: 10,
+      distance_medium_min: 15,
+      distance_medium_max: 30,
+      distance_far_min: 30,
+      penalty_discount: 0.05,
+      reward_bonus: 0.05,
+      distance_close_discount: 0.05,
+      distance_medium_fee: 0.05,
+      distance_far_fee: 0.10,
+      access_standard_fee: 0.05,
+      access_difficult_fee: 0.10,
+      access_very_difficult_fee: 0.20,
+    };
 
-    // Listing price rates (simplified - in real app this would be configurable)
+    // Listing price rates
     if (formData.propertyType === 'Apartment') {
-      if (formData.listingPrice < 800000) totalRate -= 0.05;
-      else if (formData.listingPrice > 1000000) totalRate += 0.05;
+      if (formData.listingPrice < settings.apartment_low_threshold) totalRate -= settings.penalty_discount;
+      else if (formData.listingPrice > settings.apartment_high_threshold) totalRate += settings.reward_bonus;
     } else if (formData.propertyType === 'House') {
-      if (formData.listingPrice < 1000000) totalRate -= 0.05;
-      else if (formData.listingPrice > 1500000) totalRate += 0.05;
+      if (formData.listingPrice < settings.house_low_threshold) totalRate -= settings.penalty_discount;
+      else if (formData.listingPrice > settings.house_high_threshold) totalRate += settings.reward_bonus;
     }
 
     // Distance rates
-    if (formData.distanceFromWarehouse < 10) totalRate -= 0.05;
-    else if (formData.distanceFromWarehouse >= 15 && formData.distanceFromWarehouse < 30) totalRate += 0.05;
-    else if (formData.distanceFromWarehouse >= 30) totalRate += 0.10;
+    if (formData.distanceFromWarehouse < settings.distance_close_threshold) {
+      totalRate -= settings.distance_close_discount;
+    } else if (formData.distanceFromWarehouse >= settings.distance_medium_min && formData.distanceFromWarehouse < settings.distance_medium_max) {
+      totalRate += settings.distance_medium_fee;
+    } else if (formData.distanceFromWarehouse >= settings.distance_far_min) {
+      totalRate += settings.distance_far_fee;
+    }
 
     // Access difficulty rates
     switch (formData.accessDifficulty) {
-      case 'Standard': totalRate += 0.05; break;
-      case 'Difficult': totalRate += 0.10; break;
-      case 'Very Difficult': totalRate += 0.20; break;
+      case 'Standard': totalRate += settings.access_standard_fee; break;
+      case 'Difficult': totalRate += settings.access_difficult_fee; break;
+      case 'Very Difficult': totalRate += settings.access_very_difficult_fee; break;
     }
 
     // Calculate variation and final quote
@@ -150,11 +250,126 @@ const QuoteForm = ({ onClose }: QuoteFormProps) => {
     }));
   };
 
-  const handleSubmit = () => {
-    console.log('Quote submitted:', { formData, calculations });
-    // In real app, this would save to Supabase
-    onClose();
+  const handleSubmit = async () => {
+    if (!currentUser) {
+      toast({
+        title: "Error",
+        description: "You must be logged in to create a quote",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!formData.client || !formData.email || !formData.propertyAddress) {
+      toast({
+        title: "Error",
+        description: "Please fill in all required fields",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      // First, check if client exists or create new one
+      let clientId;
+      const { data: existingClient } = await supabase
+        .from('clients')
+        .select('id')
+        .eq('email', formData.email)
+        .single();
+
+      if (existingClient) {
+        clientId = existingClient.id;
+      } else {
+        const { data: newClient, error: clientError } = await supabase
+          .from('clients')
+          .insert({
+            name: formData.client,
+            email: formData.email,
+            contact_person: formData.contactPerson,
+          })
+          .select('id')
+          .single();
+
+        if (clientError) {
+          console.error('Error creating client:', clientError);
+          toast({
+            title: "Error",
+            description: "Failed to create client record",
+            variant: "destructive",
+          });
+          return;
+        }
+        clientId = newClient.id;
+      }
+
+      // Generate quote number
+      const { data: quoteNumber, error: quoteNumError } = await supabase
+        .rpc('generate_quote_number');
+
+      if (quoteNumError) {
+        console.error('Error generating quote number:', quoteNumError);
+        toast({
+          title: "Error",
+          description: "Failed to generate quote number",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Create quote record
+      const { error: quoteError } = await supabase
+        .from('quotes')
+        .insert({
+          quote_number: quoteNumber,
+          user_id: currentUser.id,
+          client_id: clientId,
+          property_type: formData.propertyType,
+          styling_type: formData.styling,
+          property_address: formData.propertyAddress,
+          distance_from_warehouse: formData.distanceFromWarehouse,
+          listing_price: formData.listingPrice,
+          access_difficulty: formData.accessDifficulty,
+          room_rate: formData.roomRate,
+          room_data: formData.rooms,
+          equivalent_room_count: calculations.equivalentRooms,
+          base_quote: calculations.baseQuote,
+          variation: calculations.variation,
+          final_quote: calculations.finalQuote,
+          status: 'pending',
+        });
+
+      if (quoteError) {
+        console.error('Error creating quote:', quoteError);
+        toast({
+          title: "Error",
+          description: "Failed to save quote",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      toast({
+        title: "Success",
+        description: `Quote ${quoteNumber} created successfully!`,
+      });
+
+      onClose();
+    } catch (error) {
+      console.error('Error submitting quote:', error);
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred",
+        variant: "destructive",
+      });
+    } finally {
+      setSubmitting(false);
+    }
   };
+
+  const isAdmin = currentUser?.role === 'admin';
 
   return (
     <div className="space-y-6">
@@ -316,7 +531,6 @@ const QuoteForm = ({ onClose }: QuoteFormProps) => {
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {/* Header */}
             <div className="grid grid-cols-12 gap-2 text-sm font-medium text-slate-600 pb-2 border-b">
               <div className="col-span-5">Room Type</div>
               <div className="col-span-3 text-center">Count</div>
@@ -324,7 +538,6 @@ const QuoteForm = ({ onClose }: QuoteFormProps) => {
               {isAdmin && <div className="col-span-1 text-center">Weight</div>}
             </div>
 
-            {/* Room Rows */}
             {Object.entries(formData.rooms).map(([roomType, room]) => (
               <div key={roomType} className="grid grid-cols-12 gap-2 items-center py-1">
                 <div className="col-span-5 text-sm font-medium text-slate-700">
@@ -398,11 +611,11 @@ const QuoteForm = ({ onClose }: QuoteFormProps) => {
 
       {/* Actions */}
       <div className="flex gap-3 pt-4">
-        <Button variant="outline" onClick={onClose} className="flex-1">
+        <Button variant="outline" onClick={onClose} className="flex-1" disabled={submitting}>
           Cancel
         </Button>
-        <Button onClick={handleSubmit} className="flex-1 bg-blue-600 hover:bg-blue-700">
-          Generate Quote
+        <Button onClick={handleSubmit} className="flex-1 bg-blue-600 hover:bg-blue-700" disabled={submitting}>
+          {submitting ? 'Saving...' : 'Generate Quote'}
         </Button>
       </div>
     </div>

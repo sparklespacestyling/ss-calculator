@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { SettingsManager } from '@/components/SettingsManager';
 
 interface UserProfile {
   id: string;
@@ -17,6 +18,7 @@ interface UserProfile {
 const SettingsTab = () => {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [activeSettingsView, setActiveSettingsView] = useState<string | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -70,24 +72,42 @@ const SettingsTab = () => {
         title: "Success",
         description: "Logged out successfully",
       });
-
-      // The auth state change will handle the redirect
     } catch (error) {
       console.error('Error signing out:', error);
     }
   };
 
-  const handleAdminAction = (action: string) => {
-    // Add haptic feedback for mobile
+  const handleAdminAction = (action: string, settingType?: string) => {
     if (navigator.vibrate) {
       navigator.vibrate(50);
     }
     
-    toast({
-      title: "Feature Coming Soon",
-      description: `${action} functionality will be available soon`,
-    });
+    if (settingType) {
+      setActiveSettingsView(settingType);
+    } else {
+      toast({
+        title: "Feature Coming Soon",
+        description: `${action} functionality will be available soon`,
+      });
+    }
   };
+
+  if (activeSettingsView) {
+    const settingTitles = {
+      'rate_configuration': 'Rate Configuration',
+      'room_types': 'Room Types & Weights',
+      'property_types': 'Property Types & Styling Options',
+      'warehouse_settings': 'Warehouse Settings',
+    };
+
+    return (
+      <SettingsManager
+        settingType={activeSettingsView}
+        title={settingTitles[activeSettingsView as keyof typeof settingTitles] || activeSettingsView}
+        onBack={() => setActiveSettingsView(null)}
+      />
+    );
+  }
 
   if (loading) {
     return (
@@ -180,7 +200,7 @@ const SettingsTab = () => {
               variant="outline" 
               className="w-full justify-start" 
               size="sm"
-              onClick={() => handleAdminAction('Property Types & Styling Options')}
+              onClick={() => handleAdminAction('Property Types & Styling Options', 'property_types')}
             >
               <Database className="h-4 w-4 mr-2" />
               Property Types & Styling Options
@@ -189,7 +209,7 @@ const SettingsTab = () => {
               variant="outline" 
               className="w-full justify-start" 
               size="sm"
-              onClick={() => handleAdminAction('Room Types & Weights')}
+              onClick={() => handleAdminAction('Room Types & Weights', 'room_types')}
             >
               <SettingsIcon className="h-4 w-4 mr-2" />
               Room Types & Weights
@@ -198,7 +218,7 @@ const SettingsTab = () => {
               variant="outline" 
               className="w-full justify-start" 
               size="sm"
-              onClick={() => handleAdminAction('Rate Configuration')}
+              onClick={() => handleAdminAction('Rate Configuration', 'rate_configuration')}
             >
               <DollarSign className="h-4 w-4 mr-2" />
               Rate Configuration
@@ -207,7 +227,7 @@ const SettingsTab = () => {
               variant="outline" 
               className="w-full justify-start" 
               size="sm"
-              onClick={() => handleAdminAction('Warehouse Settings')}
+              onClick={() => handleAdminAction('Warehouse Settings', 'warehouse_settings')}
             >
               <SettingsIcon className="h-4 w-4 mr-2" />
               Warehouse Settings
