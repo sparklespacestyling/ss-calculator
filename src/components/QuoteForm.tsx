@@ -58,6 +58,8 @@ const QuoteForm = ({ onClose }: QuoteFormProps) => {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [rateSettings, setRateSettings] = useState<RateSettings | null>(null);
   const [roomSettings, setRoomSettings] = useState<any>(null);
+  const [propertyTypes, setPropertyTypes] = useState<string[]>(['Apartment', 'House']);
+  const [stylingTypes, setStylingTypes] = useState<string[]>(['Full', 'Partial']);
   const [submitting, setSubmitting] = useState(false);
   const { toast } = useToast();
 
@@ -128,8 +130,8 @@ const QuoteForm = ({ onClose }: QuoteFormProps) => {
         .eq('setting_key', 'rate_configuration')
         .single();
 
-      if (rateData) {
-        setRateSettings(rateData.setting_value as RateSettings);
+      if (rateData && typeof rateData.setting_value === 'object' && rateData.setting_value !== null) {
+        setRateSettings(rateData.setting_value as unknown as RateSettings);
       }
 
       // Fetch room settings
@@ -143,13 +145,26 @@ const QuoteForm = ({ onClose }: QuoteFormProps) => {
         setRoomSettings(roomData.setting_value);
         // Update room weights and default counts from settings
         const updatedRooms = { ...formData.rooms };
-        Object.entries(roomData.setting_value).forEach(([roomType, config]: [string, any]) => {
+        Object.entries(roomData.setting_value as any).forEach(([roomType, config]: [string, any]) => {
           if (updatedRooms[roomType]) {
             updatedRooms[roomType].weight = config.weight;
             updatedRooms[roomType].count = config.default_count;
           }
         });
         setFormData(prev => ({ ...prev, rooms: updatedRooms }));
+      }
+
+      // Fetch property types
+      const { data: propertyData } = await supabase
+        .from('settings')
+        .select('setting_value')
+        .eq('setting_key', 'property_types')
+        .single();
+
+      if (propertyData && propertyData.setting_value) {
+        const settings = propertyData.setting_value as any;
+        if (settings.property_types) setPropertyTypes(settings.property_types);
+        if (settings.styling_options) setStylingTypes(settings.styling_options);
       }
     } catch (error) {
       console.error('Error fetching settings:', error);
@@ -179,50 +194,74 @@ const QuoteForm = ({ onClose }: QuoteFormProps) => {
     // Calculate base quote
     const baseQuote = equivalentRooms * formData.roomRate;
 
-    // Calculate penalty/reward rates using settings or defaults
+    // Calculate penalty/reward rates using flexible rate settings
     let totalRate = 0;
-    const settings = rateSettings || {
-      apartment_low_threshold: 800000,
-      apartment_high_threshold: 1000000,
-      house_low_threshold: 1000000,
-      house_high_threshold: 1500000,
-      distance_close_threshold: 10,
-      distance_medium_min: 15,
-      distance_medium_max: 30,
-      distance_far_min: 30,
-      penalty_discount: 0.05,
-      reward_bonus: 0.05,
-      distance_close_discount: 0.05,
-      distance_medium_fee: 0.05,
-      distance_far_fee: 0.10,
-      access_standard_fee: 0.05,
-      access_difficult_fee: 0.10,
-      access_very_difficult_fee: 0.20,
-    };
+    
+    if (rateSettings) {
+      // Check if we have the new flexible rate structure
+      const flexibleRates = rateSettings as any;
+      
+      if (flexibleRates.apartment_ranges || flexibleRates.house_ranges) {
+        // Use new flexible rate system
+        const propertyRanges = formData.propertyType === 'Apartment' 
+          ? flexibleRates.apartment_ranges 
+          : flexibleRates.house_ranges;
+        
+        if (propertyRanges) {
+          for (const range of propertyRanges) {
+            if (formData.listingPrice >= range.min && formData.listingPrice < range.max) {
+              totalRate += range.rate;
+              break;
+            }
+          }
+        }
 
-    // Listing price rates
-    if (formData.propertyType === 'Apartment') {
-      if (formData.listingPrice < settings.apartment_low_threshold) totalRate -= settings.penalty_discount;
-      else if (formData.listingPrice > settings.apartment_high_threshold) totalRate += settings.reward_bonus;
-    } else if (formData.propertyType === 'House') {
-      if (formData.listingPrice < settings.house_low_threshold) totalRate -= settings.penalty_discount;
-      else if (formData.listingPrice > settings.house_high_threshold) totalRate += settings.reward_bonus;
-    }
+        // Distance rates
+        if (flexibleRates.distance_ranges) {
+          for (const range of flexibleRates.distance_ranges) {
+            if (formData.distanceFromWarehouse >= range.min && formData.distanceFromWarehouse < range.max) {
+              totalRate += range.rate;
+              break;
+            }
+          }
+        }
 
-    // Distance rates
-    if (formData.distanceFromWarehouse < settings.distance_close_threshold) {
-      totalRate -= settings.distance_close_discount;
-    } else if (formData.distanceFromWarehouse >= settings.distance_medium_min && formData.distanceFromWarehouse < settings.distance_medium_max) {
-      totalRate += settings.distance_medium_fee;
-    } else if (formData.distanceFromWarehouse >= settings.distance_far_min) {
-      totalRate += settings.distance_far_fee;
-    }
+        // Access difficulty rates
+        if (flexibleRates.access_difficulty_rates && formData.accessDifficulty) {
+          const difficultyRate = flexibleRates.access_difficulty_rates[formData.accessDifficulty];
+          if (difficultyRate !== undefined) {
+            totalRate += difficultyRate;
+          }
+        }
+      } else {
+        // Fallback to old rate system for backward compatibility
+        const settings = rateSettings as RateSettings;
+        
+        // Listing price rates
+        if (formData.propertyType === 'Apartment') {
+          if (formData.listingPrice < settings.apartment_low_threshold) totalRate -= settings.penalty_discount;
+          else if (formData.listingPrice > settings.apartment_high_threshold) totalRate += settings.reward_bonus;
+        } else if (formData.propertyType === 'House') {
+          if (formData.listingPrice < settings.house_low_threshold) totalRate -= settings.penalty_discount;
+          else if (formData.listingPrice > settings.house_high_threshold) totalRate += settings.reward_bonus;
+        }
 
-    // Access difficulty rates
-    switch (formData.accessDifficulty) {
-      case 'Standard': totalRate += settings.access_standard_fee; break;
-      case 'Difficult': totalRate += settings.access_difficult_fee; break;
-      case 'Very Difficult': totalRate += settings.access_very_difficult_fee; break;
+        // Distance rates
+        if (formData.distanceFromWarehouse < settings.distance_close_threshold) {
+          totalRate -= settings.distance_close_discount;
+        } else if (formData.distanceFromWarehouse >= settings.distance_medium_min && formData.distanceFromWarehouse < settings.distance_medium_max) {
+          totalRate += settings.distance_medium_fee;
+        } else if (formData.distanceFromWarehouse >= settings.distance_far_min) {
+          totalRate += settings.distance_far_fee;
+        }
+
+        // Access difficulty rates
+        switch (formData.accessDifficulty) {
+          case 'Standard': totalRate += settings.access_standard_fee; break;
+          case 'Difficult': totalRate += settings.access_difficult_fee; break;
+          case 'Very Difficult': totalRate += settings.access_very_difficult_fee; break;
+        }
+      }
     }
 
     // Calculate variation and final quote
@@ -435,8 +474,9 @@ const QuoteForm = ({ onClose }: QuoteFormProps) => {
                   <SelectValue placeholder="Select property type" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Apartment">Apartment</SelectItem>
-                  <SelectItem value="House">House</SelectItem>
+                  {propertyTypes.map((type) => (
+                    <SelectItem key={type} value={type}>{type}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -450,8 +490,9 @@ const QuoteForm = ({ onClose }: QuoteFormProps) => {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Full">Full</SelectItem>
-                  <SelectItem value="Partial">Partial</SelectItem>
+                  {stylingTypes.map((type) => (
+                    <SelectItem key={type} value={type}>{type}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

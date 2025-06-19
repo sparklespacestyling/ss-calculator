@@ -7,6 +7,8 @@ import { Separator } from '@/components/ui/separator';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { SettingsManager } from '@/components/SettingsManager';
+import { ProfileEditor } from '@/components/ProfileEditor';
+import { UserManagement } from '@/components/UserManagement';
 
 interface UserProfile {
   id: string;
@@ -18,7 +20,7 @@ interface UserProfile {
 const SettingsTab = () => {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeSettingsView, setActiveSettingsView] = useState<string | null>(null);
+  const [activeView, setActiveView] = useState<string | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -77,22 +79,28 @@ const SettingsTab = () => {
     }
   };
 
-  const handleAdminAction = (action: string, settingType?: string) => {
+  const handleAction = (action: string, settingType?: string) => {
     if (navigator.vibrate) {
       navigator.vibrate(50);
     }
     
     if (settingType) {
-      setActiveSettingsView(settingType);
+      setActiveView(settingType);
     } else {
-      toast({
-        title: "Feature Coming Soon",
-        description: `${action} functionality will be available soon`,
-      });
+      setActiveView(action);
     }
   };
 
-  if (activeSettingsView) {
+  // Render specific views based on activeView
+  if (activeView === 'edit_profile') {
+    return <ProfileEditor onBack={() => setActiveView(null)} />;
+  }
+
+  if (activeView === 'user_management') {
+    return <UserManagement onBack={() => setActiveView(null)} />;
+  }
+
+  if (activeView && ['rate_configuration', 'room_types', 'property_types', 'warehouse_settings'].includes(activeView)) {
     const settingTitles = {
       'rate_configuration': 'Rate Configuration',
       'room_types': 'Room Types & Weights',
@@ -102,9 +110,9 @@ const SettingsTab = () => {
 
     return (
       <SettingsManager
-        settingType={activeSettingsView}
-        title={settingTitles[activeSettingsView as keyof typeof settingTitles] || activeSettingsView}
-        onBack={() => setActiveSettingsView(null)}
+        settingType={activeView}
+        title={settingTitles[activeView as keyof typeof settingTitles] || activeView}
+        onBack={() => setActiveView(null)}
       />
     );
   }
@@ -168,7 +176,7 @@ const SettingsTab = () => {
               variant="outline" 
               className="w-full justify-start" 
               size="sm"
-              onClick={() => handleAdminAction('Edit Profile')}
+              onClick={() => handleAction('edit_profile')}
             >
               <User className="h-4 w-4 mr-2" />
               Edit Profile
@@ -177,7 +185,7 @@ const SettingsTab = () => {
               variant="outline" 
               className="w-full justify-start" 
               size="sm"
-              onClick={() => handleAdminAction('Account Settings')}
+              onClick={() => toast({ title: "Feature Coming Soon", description: "Account settings will be available soon" })}
             >
               <SettingsIcon className="h-4 w-4 mr-2" />
               Account Settings
@@ -200,7 +208,7 @@ const SettingsTab = () => {
               variant="outline" 
               className="w-full justify-start" 
               size="sm"
-              onClick={() => handleAdminAction('Property Types & Styling Options', 'property_types')}
+              onClick={() => handleAction('Property Types & Styling Options', 'property_types')}
             >
               <Database className="h-4 w-4 mr-2" />
               Property Types & Styling Options
@@ -209,7 +217,7 @@ const SettingsTab = () => {
               variant="outline" 
               className="w-full justify-start" 
               size="sm"
-              onClick={() => handleAdminAction('Room Types & Weights', 'room_types')}
+              onClick={() => handleAction('Room Types & Weights', 'room_types')}
             >
               <SettingsIcon className="h-4 w-4 mr-2" />
               Room Types & Weights
@@ -218,7 +226,7 @@ const SettingsTab = () => {
               variant="outline" 
               className="w-full justify-start" 
               size="sm"
-              onClick={() => handleAdminAction('Rate Configuration', 'rate_configuration')}
+              onClick={() => handleAction('Rate Configuration', 'rate_configuration')}
             >
               <DollarSign className="h-4 w-4 mr-2" />
               Rate Configuration
@@ -227,7 +235,7 @@ const SettingsTab = () => {
               variant="outline" 
               className="w-full justify-start" 
               size="sm"
-              onClick={() => handleAdminAction('Warehouse Settings', 'warehouse_settings')}
+              onClick={() => handleAction('Warehouse Settings', 'warehouse_settings')}
             >
               <SettingsIcon className="h-4 w-4 mr-2" />
               Warehouse Settings
@@ -236,7 +244,7 @@ const SettingsTab = () => {
               variant="outline" 
               className="w-full justify-start" 
               size="sm"
-              onClick={() => handleAdminAction('User Management')}
+              onClick={() => handleAction('user_management')}
             >
               <User className="h-4 w-4 mr-2" />
               User Management
@@ -257,7 +265,7 @@ const SettingsTab = () => {
             variant="outline" 
             className="w-full justify-start" 
             size="sm"
-            onClick={() => handleAdminAction('Notifications')}
+            onClick={() => toast({ title: "Feature Coming Soon", description: "Notifications settings will be available soon" })}
           >
             <SettingsIcon className="h-4 w-4 mr-2" />
             Notifications
@@ -266,7 +274,7 @@ const SettingsTab = () => {
             variant="outline" 
             className="w-full justify-start" 
             size="sm"
-            onClick={() => handleAdminAction('Preferences')}
+            onClick={() => toast({ title: "Feature Coming Soon", description: "Preferences will be available soon" })}
           >
             <SettingsIcon className="h-4 w-4 mr-2" />
             Preferences
@@ -275,7 +283,7 @@ const SettingsTab = () => {
             variant="outline" 
             className="w-full justify-start" 
             size="sm"
-            onClick={() => handleAdminAction('Help & Support')}
+            onClick={() => toast({ title: "Feature Coming Soon", description: "Help & Support will be available soon" })}
           >
             <SettingsIcon className="h-4 w-4 mr-2" />
             Help & Support
