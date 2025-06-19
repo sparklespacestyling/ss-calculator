@@ -1,5 +1,5 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Home, FileText, Settings, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -7,32 +7,89 @@ import { HomeTab } from '@/components/HomeTab';
 import { QuotesTab } from '@/components/QuotesTab';
 import { SettingsTab } from '@/components/SettingsTab';
 import { QuoteForm } from '@/components/QuoteForm';
+import { QuoteDetailView } from '@/components/QuoteDetailView';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { supabase } from '@/integrations/supabase/client';
 
 type TabType = 'home' | 'quotes' | 'settings';
 
 const Index = () => {
-  const [activeTab, setActiveTab] = useState<TabType>('home');
+  const [activeTab, setActiveTab] = useState<TabType>('quotes');
   const [showQuoteForm, setShowQuoteForm] = useState(false);
+  const [selectedQuoteId, setSelectedQuoteId] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchCurrentUser();
+  }, []);
+
+  const fetchCurrentUser = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+        setCurrentUser(profile);
+        
+        // Set default tab based on user role
+        if (profile?.role !== 'admin') {
+          setActiveTab('quotes');
+        } else {
+          setActiveTab('home');
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching user:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const isAdmin = currentUser?.role === 'admin';
 
   const tabs = [
-    { id: 'home' as TabType, label: 'Home', icon: Home },
+    ...(isAdmin ? [{ id: 'home' as TabType, label: 'Home', icon: Home }] : []),
     { id: 'quotes' as TabType, label: 'Quotes', icon: FileText },
     { id: 'settings' as TabType, label: 'Settings', icon: Settings },
   ];
 
   const renderContent = () => {
+    if (selectedQuoteId) {
+      return (
+        <QuoteDetailView 
+          quoteId={selectedQuoteId} 
+          onBack={() => setSelectedQuoteId(null)}
+          onQuoteUpdated={() => {
+            // Refresh the quotes list if needed
+            setSelectedQuoteId(null);
+          }}
+        />
+      );
+    }
+
     switch (activeTab) {
       case 'home':
-        return <HomeTab />;
+        return isAdmin ? <HomeTab /> : <QuotesTab onViewQuote={setSelectedQuoteId} />;
       case 'quotes':
-        return <QuotesTab />;
+        return <QuotesTab onViewQuote={setSelectedQuoteId} />;
       case 'settings':
         return <SettingsTab />;
       default:
-        return <HomeTab />;
+        return <QuotesTab onViewQuote={setSelectedQuoteId} />;
     }
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center">
+        <p className="text-slate-500">Loading...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex flex-col">

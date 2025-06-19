@@ -22,21 +22,44 @@ interface Quote {
   property_type: string;
   styling_type: string;
   property_address: string;
+  updated_at: string;
   clients: {
     name: string;
     email: string;
   };
 }
 
-const QuotesTab = () => {
+interface QuotesTabProps {
+  onViewQuote: (quoteId: string) => void;
+}
+
+const QuotesTab = ({ onViewQuote }: QuotesTabProps) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [loading, setLoading] = useState(true);
+  const [currentUser, setCurrentUser] = useState<any>(null);
   const { toast } = useToast();
 
   useEffect(() => {
+    fetchCurrentUser();
     fetchQuotes();
   }, []);
+
+  const fetchCurrentUser = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+        setCurrentUser(profile);
+      }
+    } catch (error) {
+      console.error('Error fetching user:', error);
+    }
+  };
 
   const fetchQuotes = async () => {
     try {
@@ -48,6 +71,7 @@ const QuotesTab = () => {
           final_quote,
           status,
           created_at,
+          updated_at,
           property_type,
           styling_type,
           property_address,
@@ -80,8 +104,7 @@ const QuotesTab = () => {
     if (navigator.vibrate) {
       navigator.vibrate(50);
     }
-    console.log('Quote clicked:', quoteId);
-    // TODO: Navigate to quote detail view
+    onViewQuote(quoteId);
   };
 
   const handleStatusChange = async (quoteId: string, newStatus: string) => {
@@ -135,6 +158,14 @@ const QuotesTab = () => {
     quote.property_address.toLowerCase().includes(searchQuery.toLowerCase()) ||
     quote.quote_number.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const isAdmin = currentUser?.role === 'admin';
+
+  // For regular users, only show quote amount if quote has been updated by admin
+  const shouldShowAmount = (quote: Quote) => {
+    if (isAdmin) return true;
+    return quote.updated_at !== quote.created_at; // Quote has been edited
+  };
 
   if (loading) {
     return (
@@ -231,9 +262,15 @@ const QuotesTab = () => {
                     </div>
                     <div className="flex items-start gap-2 ml-4">
                       <div className="text-right">
-                        <p className="text-xl font-bold text-slate-900">
-                          ${quote.final_quote.toLocaleString()}
-                        </p>
+                        {shouldShowAmount(quote) ? (
+                          <p className="text-xl font-bold text-slate-900">
+                            ${quote.final_quote.toLocaleString()}
+                          </p>
+                        ) : (
+                          <p className="text-lg font-medium text-slate-500">
+                            Pending Review
+                          </p>
+                        )}
                         <p className="text-xs text-slate-500">
                           {new Date(quote.created_at).toLocaleDateString()}
                         </p>
@@ -248,20 +285,22 @@ const QuotesTab = () => {
                           <DropdownMenuItem onClick={() => handleQuoteClick(quote.id)}>
                             View Details
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => console.log('Edit quote:', quote.id)}>
-                            Edit Quote
-                          </DropdownMenuItem>
-                          {quote.status !== 'accepted' && (
+                          {isAdmin && (
+                            <DropdownMenuItem onClick={() => handleQuoteClick(quote.id)}>
+                              Edit Quote
+                            </DropdownMenuItem>
+                          )}
+                          {isAdmin && quote.status !== 'accepted' && (
                             <DropdownMenuItem onClick={() => handleStatusChange(quote.id, 'accepted')}>
                               Accept
                             </DropdownMenuItem>
                           )}
-                          {quote.status !== 'rejected' && (
+                          {isAdmin && quote.status !== 'rejected' && (
                             <DropdownMenuItem onClick={() => handleStatusChange(quote.id, 'rejected')}>
                               Reject
                             </DropdownMenuItem>
                           )}
-                          {quote.status !== 'voided' && (
+                          {isAdmin && quote.status !== 'voided' && (
                             <DropdownMenuItem 
                               className="text-red-600" 
                               onClick={() => handleStatusChange(quote.id, 'voided')}

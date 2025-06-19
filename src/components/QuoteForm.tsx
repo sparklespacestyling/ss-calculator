@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -715,18 +714,6 @@ const QuoteForm = ({ onClose }: QuoteFormProps) => {
               </span>
             </div>
             <Separator />
-            <div className="flex justify-between items-center">
-              <span className="text-lg font-bold text-slate-900">Final Quote:</span>
-              <span className="text-2xl font-bold text-blue-600">${calculations.finalQuote.toLocaleString()}</span>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Final Quote for Regular Users */}
-      {!isAdmin && (
-        <Card className="border-0 shadow-sm bg-gradient-to-r from-blue-50 to-indigo-50">
-          <CardContent className="pt-6">
             <div className="flex justify-between items-center">
               <span className="text-lg font-bold text-slate-900">Final Quote:</span>
               <span className="text-2xl font-bold text-blue-600">${calculations.finalQuote.toLocaleString()}</span>
