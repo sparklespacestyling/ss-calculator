@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -61,6 +62,9 @@ const QuoteForm = ({ onClose }: QuoteFormProps) => {
   const [propertyTypes, setPropertyTypes] = useState<string[]>(['Apartment', 'House']);
   const [stylingTypes, setStylingTypes] = useState<string[]>(['Full', 'Partial']);
   const [submitting, setSubmitting] = useState(false);
+  const [clients, setClients] = useState<any[]>([]);
+  const [clientSuggestions, setClientSuggestions] = useState<any[]>([]);
+  const [showClientSuggestions, setShowClientSuggestions] = useState(false);
   const { toast } = useToast();
 
   // Default room types with weights (fallback)
@@ -107,6 +111,7 @@ const QuoteForm = ({ onClose }: QuoteFormProps) => {
   useEffect(() => {
     fetchCurrentUser();
     fetchSettings();
+    fetchClients();
   }, []);
 
   const fetchCurrentUser = async () => {
@@ -118,6 +123,24 @@ const QuoteForm = ({ onClose }: QuoteFormProps) => {
         .eq('id', user.id)
         .single();
       setCurrentUser(profile);
+    }
+  };
+
+  const fetchClients = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('clients')
+        .select('*')
+        .order('name');
+
+      if (error) {
+        console.error('Error fetching clients:', error);
+        return;
+      }
+
+      setClients(data || []);
+    } catch (error) {
+      console.error('Error fetching clients:', error);
     }
   };
 
@@ -184,6 +207,31 @@ const QuoteForm = ({ onClose }: QuoteFormProps) => {
   useEffect(() => {
     calculateQuote();
   }, [formData.rooms, formData.roomRate, formData.listingPrice, formData.distanceFromWarehouse, formData.accessDifficulty, formData.propertyType, rateSettings]);
+
+  const handleClientSearch = (value: string) => {
+    setFormData(prev => ({ ...prev, client: value }));
+    
+    if (value.length > 0) {
+      const filtered = clients.filter(client => 
+        client.name.toLowerCase().includes(value.toLowerCase()) ||
+        client.email.toLowerCase().includes(value.toLowerCase())
+      );
+      setClientSuggestions(filtered);
+      setShowClientSuggestions(true);
+    } else {
+      setShowClientSuggestions(false);
+    }
+  };
+
+  const selectClient = (client: any) => {
+    setFormData(prev => ({
+      ...prev,
+      client: client.name,
+      email: client.email,
+      contactPerson: client.contact_person || ''
+    }));
+    setShowClientSuggestions(false);
+  };
 
   const calculateQuote = () => {
     // Calculate equivalent room count
@@ -422,14 +470,35 @@ const QuoteForm = ({ onClose }: QuoteFormProps) => {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
+            <div className="relative">
               <Label htmlFor="client">Client Name *</Label>
               <Input
                 id="client"
                 placeholder="Search or enter client name..."
                 value={formData.client}
-                onChange={(e) => setFormData(prev => ({ ...prev, client: e.target.value }))}
+                onChange={(e) => handleClientSearch(e.target.value)}
+                onFocus={() => {
+                  if (formData.client.length > 0) setShowClientSuggestions(true);
+                }}
+                onBlur={() => {
+                  // Delay hiding suggestions to allow clicking
+                  setTimeout(() => setShowClientSuggestions(false), 200);
+                }}
               />
+              {showClientSuggestions && clientSuggestions.length > 0 && (
+                <div className="absolute z-10 w-full bg-white border border-gray-200 rounded-md shadow-lg mt-1 max-h-48 overflow-y-auto">
+                  {clientSuggestions.map((client) => (
+                    <div
+                      key={client.id}
+                      className="p-2 hover:bg-gray-100 cursor-pointer"
+                      onClick={() => selectClient(client)}
+                    >
+                      <div className="font-medium">{client.name}</div>
+                      <div className="text-sm text-gray-500">{client.email}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
             <div>
               <Label htmlFor="contact">Contact Person</Label>
@@ -508,29 +577,33 @@ const QuoteForm = ({ onClose }: QuoteFormProps) => {
             />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <Label htmlFor="distance">Distance from Warehouse (km) *</Label>
-              <Input
-                id="distance"
-                type="number"
-                min="0"
-                step="0.1"
-                value={formData.distanceFromWarehouse || ''}
-                onChange={(e) => setFormData(prev => ({ ...prev, distanceFromWarehouse: parseFloat(e.target.value) || 0 }))}
-              />
-            </div>
-            <div>
-              <Label htmlFor="listingPrice">Listing Price *</Label>
-              <Input
-                id="listingPrice"
-                type="number"
-                min="0"
-                placeholder="800000"
-                value={formData.listingPrice || ''}
-                onChange={(e) => setFormData(prev => ({ ...prev, listingPrice: parseFloat(e.target.value) || 0 }))}
-              />
-            </div>
+          <div className={`grid grid-cols-1 ${isAdmin ? 'md:grid-cols-3' : 'md:grid-cols-1'} gap-4`}>
+            {isAdmin && (
+              <>
+                <div>
+                  <Label htmlFor="distance">Distance from Warehouse (km) *</Label>
+                  <Input
+                    id="distance"
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    value={formData.distanceFromWarehouse || ''}
+                    onChange={(e) => setFormData(prev => ({ ...prev, distanceFromWarehouse: parseFloat(e.target.value) || 0 }))}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="listingPrice">Listing Price *</Label>
+                  <Input
+                    id="listingPrice"
+                    type="number"
+                    min="0"
+                    placeholder="800000"
+                    value={formData.listingPrice || ''}
+                    onChange={(e) => setFormData(prev => ({ ...prev, listingPrice: parseFloat(e.target.value) || 0 }))}
+                  />
+                </div>
+              </>
+            )}
             <div>
               <Label htmlFor="accessDifficulty">Access Difficulty *</Label>
               <Select 
@@ -550,16 +623,18 @@ const QuoteForm = ({ onClose }: QuoteFormProps) => {
             </div>
           </div>
 
-          <div>
-            <Label htmlFor="roomRate">Room Rate</Label>
-            <Input
-              id="roomRate"
-              type="number"
-              min="0"
-              value={formData.roomRate}
-              onChange={(e) => setFormData(prev => ({ ...prev, roomRate: parseFloat(e.target.value) || 400 }))}
-            />
-          </div>
+          {isAdmin && (
+            <div>
+              <Label htmlFor="roomRate">Room Rate</Label>
+              <Input
+                id="roomRate"
+                type="number"
+                min="0"
+                value={formData.roomRate}
+                onChange={(e) => setFormData(prev => ({ ...prev, roomRate: parseFloat(e.target.value) || 400 }))}
+              />
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -572,7 +647,7 @@ const QuoteForm = ({ onClose }: QuoteFormProps) => {
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            <div className="grid grid-cols-12 gap-2 text-sm font-medium text-slate-600 pb-2 border-b">
+            <div className={`grid ${isAdmin ? 'grid-cols-12' : 'grid-cols-11'} gap-2 text-sm font-medium text-slate-600 pb-2 border-b`}>
               <div className="col-span-5">Room Type</div>
               <div className="col-span-3 text-center">Count</div>
               <div className="col-span-3 text-center">Item Qty %</div>
@@ -580,7 +655,7 @@ const QuoteForm = ({ onClose }: QuoteFormProps) => {
             </div>
 
             {Object.entries(formData.rooms).map(([roomType, room]) => (
-              <div key={roomType} className="grid grid-cols-12 gap-2 items-center py-1">
+              <div key={roomType} className={`grid ${isAdmin ? 'grid-cols-12' : 'grid-cols-11'} gap-2 items-center py-1`}>
                 <div className="col-span-5 text-sm font-medium text-slate-700">
                   {roomType}
                   {roomType === 'Master Bedroom' && <span className="text-red-500 ml-1">*</span>}
@@ -615,40 +690,50 @@ const QuoteForm = ({ onClose }: QuoteFormProps) => {
         </CardContent>
       </Card>
 
-      {/* Calculations */}
-      <Card className="border-0 shadow-sm bg-gradient-to-r from-blue-50 to-indigo-50">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg font-semibold text-slate-900 flex items-center gap-2">
-            <Calculator className="h-5 w-5 text-blue-600" />
-            Quote Calculation
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {isAdmin && (
-            <>
-              <div className="flex justify-between items-center">
-                <span className="text-sm font-medium text-slate-700">Equivalent Room Count:</span>
-                <span className="text-sm font-semibold text-slate-900">{calculations.equivalentRooms}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm font-medium text-slate-700">Base Quote:</span>
-                <span className="text-sm font-semibold text-slate-900">${calculations.baseQuote.toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm font-medium text-slate-700">Variation:</span>
-                <span className={`text-sm font-semibold ${calculations.variation >= 0 ? 'text-red-600' : 'text-green-600'}`}>
-                  {calculations.variation >= 0 ? '+' : ''}${calculations.variation.toLocaleString()}
-                </span>
-              </div>
-              <Separator />
-            </>
-          )}
-          <div className="flex justify-between items-center">
-            <span className="text-lg font-bold text-slate-900">Final Quote:</span>
-            <span className="text-2xl font-bold text-blue-600">${calculations.finalQuote.toLocaleString()}</span>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Calculations - Only for Admin */}
+      {isAdmin && (
+        <Card className="border-0 shadow-sm bg-gradient-to-r from-blue-50 to-indigo-50">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+              <Calculator className="h-5 w-5 text-blue-600" />
+              Quote Calculation
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex justify-between items-center">
+              <span className="text-sm font-medium text-slate-700">Equivalent Room Count:</span>
+              <span className="text-sm font-semibold text-slate-900">{calculations.equivalentRooms}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm font-medium text-slate-700">Base Quote:</span>
+              <span className="text-sm font-semibold text-slate-900">${calculations.baseQuote.toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm font-medium text-slate-700">Variation:</span>
+              <span className={`text-sm font-semibold ${calculations.variation >= 0 ? 'text-red-600' : 'text-green-600'}`}>
+                {calculations.variation >= 0 ? '+' : ''}${calculations.variation.toLocaleString()}
+              </span>
+            </div>
+            <Separator />
+            <div className="flex justify-between items-center">
+              <span className="text-lg font-bold text-slate-900">Final Quote:</span>
+              <span className="text-2xl font-bold text-blue-600">${calculations.finalQuote.toLocaleString()}</span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Final Quote for Regular Users */}
+      {!isAdmin && (
+        <Card className="border-0 shadow-sm bg-gradient-to-r from-blue-50 to-indigo-50">
+          <CardContent className="pt-6">
+            <div className="flex justify-between items-center">
+              <span className="text-lg font-bold text-slate-900">Final Quote:</span>
+              <span className="text-2xl font-bold text-blue-600">${calculations.finalQuote.toLocaleString()}</span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Actions */}
       <div className="flex gap-3 pt-4">
