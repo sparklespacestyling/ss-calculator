@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,6 +12,7 @@ import { useToast } from '@/hooks/use-toast';
 
 interface QuoteFormProps {
   onClose: () => void;
+  editingQuote?: any;
 }
 
 interface RoomData {
@@ -54,7 +56,7 @@ interface RateSettings {
   access_very_difficult_fee: number;
 }
 
-const QuoteForm = ({ onClose }: QuoteFormProps) => {
+const QuoteForm = ({ onClose, editingQuote }: QuoteFormProps) => {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [rateSettings, setRateSettings] = useState<RateSettings | null>(null);
   const [roomSettings, setRoomSettings] = useState<any>(null);
@@ -112,6 +114,25 @@ const QuoteForm = ({ onClose }: QuoteFormProps) => {
     fetchSettings();
     fetchClients();
   }, []);
+
+  // Load editing quote data
+  useEffect(() => {
+    if (editingQuote) {
+      setFormData({
+        client: editingQuote.clients?.name || '',
+        contactPerson: editingQuote.clients?.contact_person || '',
+        email: editingQuote.clients?.email || '',
+        propertyType: editingQuote.property_type || '',
+        styling: editingQuote.styling_type || '',
+        propertyAddress: editingQuote.property_address || '',
+        distanceFromWarehouse: editingQuote.distance_from_warehouse || 0,
+        listingPrice: editingQuote.listing_price || 0,
+        accessDifficulty: editingQuote.access_difficulty || '',
+        roomRate: editingQuote.room_rate || 400,
+        rooms: editingQuote.room_data || defaultRooms,
+      });
+    }
+  }, [editingQuote]);
 
   const fetchCurrentUser = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -368,6 +389,14 @@ const QuoteForm = ({ onClose }: QuoteFormProps) => {
 
       if (existingClient) {
         clientId = existingClient.id;
+        // Update client info if needed
+        await supabase
+          .from('clients')
+          .update({
+            name: formData.client,
+            contact_person: formData.contactPerson,
+          })
+          .eq('id', clientId);
       } else {
         const { data: newClient, error: clientError } = await supabase
           .from('clients')
@@ -391,56 +420,99 @@ const QuoteForm = ({ onClose }: QuoteFormProps) => {
         clientId = newClient.id;
       }
 
-      // Generate quote number
-      const { data: quoteNumber, error: quoteNumError } = await supabase
-        .rpc('generate_quote_number');
+      const isAdmin = currentUser?.role === 'admin';
 
-      if (quoteNumError) {
-        console.error('Error generating quote number:', quoteNumError);
+      // For regular users, set default values for hidden fields
+      const quoteData = {
+        user_id: currentUser.id,
+        client_id: clientId,
+        property_type: formData.propertyType,
+        styling_type: formData.styling,
+        property_address: formData.propertyAddress,
+        distance_from_warehouse: isAdmin ? formData.distanceFromWarehouse : 0,
+        listing_price: isAdmin ? formData.listingPrice : 0,
+        access_difficulty: formData.accessDifficulty,
+        room_rate: isAdmin ? formData.roomRate : 400,
+        room_data: formData.rooms,
+        equivalent_room_count: calculations.equivalentRooms,
+        base_quote: calculations.baseQuote,
+        variation: calculations.variation,
+        final_quote: calculations.finalQuote,
+        status: 'pending',
+      };
+
+      if (editingQuote) {
+        // Update existing quote
+        const { error: quoteError } = await supabase
+          .from('quotes')
+          .update({
+            ...quoteData,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', editingQuote.id);
+
+        if (quoteError) {
+          console.error('Error updating quote:', quoteError);
+          toast({
+            title: "Error",
+            description: "Failed to update quote",
+            variant: "destructive",
+          });
+          return;
+        }
+
         toast({
-          title: "Error",
-          description: "Failed to generate quote number",
-          variant: "destructive",
+          title: "Success",
+          description: `Quote ${editingQuote.quote_number} updated successfully!`,
         });
-        return;
-      }
+      } else {
+        // Generate quote number
+        const { data: quoteNumber, error: quoteNumError } = await supabase
+          .rpc('generate_quote_number');
 
-      // Create quote record
-      const { error: quoteError } = await supabase
-        .from('quotes')
-        .insert({
-          quote_number: quoteNumber,
-          user_id: currentUser.id,
-          client_id: clientId,
-          property_type: formData.propertyType,
-          styling_type: formData.styling,
-          property_address: formData.propertyAddress,
-          distance_from_warehouse: formData.distanceFromWarehouse,
-          listing_price: formData.listingPrice,
-          access_difficulty: formData.accessDifficulty,
-          room_rate: formData.roomRate,
-          room_data: formData.rooms,
-          equivalent_room_count: calculations.equivalentRooms,
-          base_quote: calculations.baseQuote,
-          variation: calculations.variation,
-          final_quote: calculations.finalQuote,
-          status: 'pending',
-        });
+        if (quoteNumError) {
+          console.error('Error generating quote number:', quoteNumError);
+          toast({
+            title: "Error",
+            description: "Failed to generate quote number",
+            variant: "destructive",
+          });
+          return;
+        }
 
-      if (quoteError) {
-        console.error('Error creating quote:', quoteError);
+        // Create new quote record
+        const { error: quoteError } = await supabase
+          .from('quotes')
+          .insert({
+            quote_number: quoteNumber,
+            ...quoteData
+          });
+
+        if (quoteError) {
+          console.error('Error creating quote:', quoteError);
+          
+          // Check if it's a duplicate quote number error
+          if (quoteError.code === '23505' && quoteError.message.includes('quotes_quote_number_key')) {
+            toast({
+              title: "Error",
+              description: "Quote number already exists. Please try again.",
+              variant: "destructive",
+            });
+          } else {
+            toast({
+              title: "Error",
+              description: "Failed to save quote",
+              variant: "destructive",
+            });
+          }
+          return;
+        }
+
         toast({
-          title: "Error",
-          description: "Failed to save quote",
-          variant: "destructive",
+          title: "Success",
+          description: `Quote ${quoteNumber} created successfully!`,
         });
-        return;
       }
-
-      toast({
-        title: "Success",
-        description: `Quote ${quoteNumber} created successfully!`,
-      });
 
       onClose();
     } catch (error) {
@@ -728,7 +800,7 @@ const QuoteForm = ({ onClose }: QuoteFormProps) => {
           Cancel
         </Button>
         <Button onClick={handleSubmit} className="flex-1 bg-blue-600 hover:bg-blue-700" disabled={submitting}>
-          {submitting ? 'Saving...' : 'Generate Quote'}
+          {submitting ? 'Saving...' : editingQuote ? 'Update Quote' : 'Generate Quote'}
         </Button>
       </div>
     </div>
