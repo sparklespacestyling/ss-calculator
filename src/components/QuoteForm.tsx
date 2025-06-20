@@ -336,6 +336,50 @@ const QuoteForm = ({ onClose }: QuoteFormProps) => {
     }));
   };
 
+  // Enhanced quote number generation with better retry logic
+  const generateUniqueQuoteNumber = async (maxRetries = 5): Promise<string> => {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`Attempting to generate quote number, attempt ${attempt}/${maxRetries}`);
+        
+        // Add a small random delay to reduce race conditions
+        if (attempt > 1) {
+          await new Promise(resolve => setTimeout(resolve, Math.random() * 1000 + 500));
+        }
+        
+        const { data: quoteNumber, error } = await supabase.rpc('generate_quote_number');
+
+        if (error) {
+          console.error(`Quote number generation error (attempt ${attempt}):`, error);
+          if (attempt === maxRetries) throw error;
+          continue;
+        }
+
+        // Verify the quote number is unique before returning
+        const { data: existingQuote } = await supabase
+          .from('quotes')
+          .select('id')
+          .eq('quote_number', quoteNumber)
+          .single();
+
+        if (!existingQuote) {
+          console.log(`Quote number generated successfully: ${quoteNumber}`);
+          return quoteNumber;
+        } else {
+          console.log(`Quote number ${quoteNumber} already exists, retrying...`);
+          if (attempt === maxRetries) {
+            throw new Error('Unable to generate unique quote number');
+          }
+        }
+      } catch (error) {
+        console.error(`Quote number generation failed (attempt ${attempt}):`, error);
+        if (attempt === maxRetries) throw error;
+      }
+    }
+    
+    throw new Error('Failed to generate quote number after maximum retries');
+  };
+
   const handleSubmit = async () => {
     if (!currentUser) {
       toast({
@@ -364,7 +408,7 @@ const QuoteForm = ({ onClose }: QuoteFormProps) => {
         .from('clients')
         .select('id')
         .eq('email', formData.email)
-        .single();
+        .maybeSingle();
 
       if (existingClient) {
         clientId = existingClient.id;
@@ -391,21 +435,43 @@ const QuoteForm = ({ onClose }: QuoteFormProps) => {
         clientId = newClient.id;
       }
 
-      // Generate quote number
-      const { data: quoteNumber, error: quoteNumError } = await supabase
-        .rpc('generate_quote_number');
-
-      if (quoteNumError) {
-        console.error('Error generating quote number:', quoteNumError);
+      // Generate unique quote number
+      let quoteNumber;
+      try {
+        quoteNumber = await generateUniqueQuoteNumber();
+      } catch (error) {
+        console.error('Failed to generate unique quote number:', error);
         toast({
           title: "Error",
-          description: "Failed to generate quote number",
+          description: "Failed to generate quote number. Please try again.",
           variant: "destructive",
         });
         return;
       }
 
-      // Create quote record
+      const isAdmin = currentUser?.role === 'admin';
+
+      // For regular users, set default values and calculate quote
+      let calculatedValues = { equivalentRooms: 0, baseQuote: 0, variation: 0, finalQuote: 0 };
+      
+      if (!isAdmin) {
+        // Calculate values for regular users with default settings
+        const equivalentRooms = Object.values(formData.rooms).reduce((total, room) => {
+          return total + (room.count * (room.percentage / 100) * room.weight);
+        }, 0);
+        
+        const baseQuote = equivalentRooms * 400; // Default room rate for regular users
+        calculatedValues = {
+          equivalentRooms: Math.round(equivalentRooms * 100) / 100,
+          baseQuote: Math.round(baseQuote),
+          variation: 0, // No variation for regular users initially
+          finalQuote: Math.round(baseQuote),
+        };
+      } else {
+        calculatedValues = calculations;
+      }
+
+      // Create quote record with atomic operation
       const { error: quoteError } = await supabase
         .from('quotes')
         .insert({
@@ -415,25 +481,35 @@ const QuoteForm = ({ onClose }: QuoteFormProps) => {
           property_type: formData.propertyType,
           styling_type: formData.styling,
           property_address: formData.propertyAddress,
-          distance_from_warehouse: formData.distanceFromWarehouse,
-          listing_price: formData.listingPrice,
+          distance_from_warehouse: isAdmin ? formData.distanceFromWarehouse : 0,
+          listing_price: isAdmin ? formData.listingPrice : 0,
           access_difficulty: formData.accessDifficulty,
-          room_rate: formData.roomRate,
+          room_rate: isAdmin ? formData.roomRate : 400,
           room_data: formData.rooms,
-          equivalent_room_count: calculations.equivalentRooms,
-          base_quote: calculations.baseQuote,
-          variation: calculations.variation,
-          final_quote: calculations.finalQuote,
+          equivalent_room_count: calculatedValues.equivalentRooms,
+          base_quote: calculatedValues.baseQuote,
+          variation: calculatedValues.variation,
+          final_quote: calculatedValues.finalQuote,
           status: 'pending',
         });
 
       if (quoteError) {
         console.error('Error creating quote:', quoteError);
-        toast({
-          title: "Error",
-          description: "Failed to save quote",
-          variant: "destructive",
-        });
+        
+        // Handle specific duplicate key error
+        if (quoteError.code === '23505' && quoteError.message.includes('quotes_quote_number_key')) {
+          toast({
+            title: "Error",
+            description: "Quote number conflict occurred. Please try again.",
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: "Error",
+            description: "Failed to save quote. Please try again.",
+            variant: "destructive",
+          });
+        }
         return;
       }
 
@@ -447,7 +523,7 @@ const QuoteForm = ({ onClose }: QuoteFormProps) => {
       console.error('Error submitting quote:', error);
       toast({
         title: "Error",
-        description: "An unexpected error occurred",
+        description: "An unexpected error occurred. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -735,4 +811,4 @@ const QuoteForm = ({ onClose }: QuoteFormProps) => {
   );
 };
 
-export { QuoteForm };
+export default QuoteForm;
