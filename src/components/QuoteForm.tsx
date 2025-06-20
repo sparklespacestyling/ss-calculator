@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,18 +8,9 @@ import { Separator } from '@/components/ui/separator';
 import { Calculator, User, MapPin, DollarSign, Home } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 
 interface QuoteFormProps {
   onClose: () => void;
-  editingQuote?: any;
 }
 
 interface RoomData {
@@ -64,7 +54,7 @@ interface RateSettings {
   access_very_difficult_fee: number;
 }
 
-const QuoteForm = ({ onClose, editingQuote }: QuoteFormProps) => {
+const QuoteForm = ({ onClose }: QuoteFormProps) => {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [rateSettings, setRateSettings] = useState<RateSettings | null>(null);
   const [roomSettings, setRoomSettings] = useState<any>(null);
@@ -122,25 +112,6 @@ const QuoteForm = ({ onClose, editingQuote }: QuoteFormProps) => {
     fetchSettings();
     fetchClients();
   }, []);
-
-  // Load editing quote data
-  useEffect(() => {
-    if (editingQuote) {
-      setFormData({
-        client: editingQuote.clients?.name || '',
-        contactPerson: editingQuote.clients?.contact_person || '',
-        email: editingQuote.clients?.email || '',
-        propertyType: editingQuote.property_type || '',
-        styling: editingQuote.styling_type || '',
-        propertyAddress: editingQuote.property_address || '',
-        distanceFromWarehouse: editingQuote.distance_from_warehouse || 0,
-        listingPrice: editingQuote.listing_price || 0,
-        accessDifficulty: editingQuote.access_difficulty || '',
-        roomRate: editingQuote.room_rate || 400,
-        rooms: editingQuote.room_data || defaultRooms,
-      });
-    }
-  }, [editingQuote]);
 
   const fetchCurrentUser = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -365,34 +336,6 @@ const QuoteForm = ({ onClose, editingQuote }: QuoteFormProps) => {
     }));
   };
 
-  // Enhanced quote number generation with retry logic
-  const generateQuoteNumberWithRetry = async (maxRetries = 3): Promise<string> => {
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        console.log(`Attempting to generate quote number, attempt ${attempt}/${maxRetries}`);
-        
-        const { data: quoteNumber, error } = await supabase
-          .rpc('generate_quote_number');
-
-        if (error) {
-          console.error(`Quote number generation error (attempt ${attempt}):`, error);
-          if (attempt === maxRetries) throw error;
-        } else {
-          console.log(`Quote number generated successfully: ${quoteNumber}`);
-          return quoteNumber;
-        }
-      } catch (error) {
-        console.error(`Quote number generation failed (attempt ${attempt}):`, error);
-        if (attempt === maxRetries) throw error;
-      }
-      
-      // Wait a bit before retrying (exponential backoff)
-      await new Promise(resolve => setTimeout(resolve, attempt * 500));
-    }
-    
-    throw new Error('Failed to generate quote number after maximum retries');
-  };
-
   const handleSubmit = async () => {
     if (!currentUser) {
       toast({
@@ -425,14 +368,6 @@ const QuoteForm = ({ onClose, editingQuote }: QuoteFormProps) => {
 
       if (existingClient) {
         clientId = existingClient.id;
-        // Update client info if needed
-        await supabase
-          .from('clients')
-          .update({
-            name: formData.client,
-            contact_person: formData.contactPerson,
-          })
-          .eq('id', clientId);
       } else {
         const { data: newClient, error: clientError } = await supabase
           .from('clients')
@@ -456,118 +391,63 @@ const QuoteForm = ({ onClose, editingQuote }: QuoteFormProps) => {
         clientId = newClient.id;
       }
 
-      const isAdmin = currentUser?.role === 'admin';
+      // Generate quote number
+      const { data: quoteNumber, error: quoteNumError } = await supabase
+        .rpc('generate_quote_number');
 
-      // For regular users, set default values for hidden fields
-      const quoteData = {
-        user_id: currentUser.id,
-        client_id: clientId,
-        property_type: formData.propertyType,
-        styling_type: formData.styling,
-        property_address: formData.propertyAddress,
-        distance_from_warehouse: isAdmin ? formData.distanceFromWarehouse : 0,
-        listing_price: isAdmin ? formData.listingPrice : 0,
-        access_difficulty: formData.accessDifficulty,
-        room_rate: isAdmin ? formData.roomRate : 400,
-        room_data: formData.rooms,
-        equivalent_room_count: calculations.equivalentRooms,
-        base_quote: calculations.baseQuote,
-        variation: calculations.variation,
-        final_quote: calculations.finalQuote,
-        status: 'pending',
-      };
-
-      if (editingQuote) {
-        // Update existing quote
-        const { error: quoteError } = await supabase
-          .from('quotes')
-          .update({
-            ...quoteData,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', editingQuote.id);
-
-        if (quoteError) {
-          console.error('Error updating quote:', quoteError);
-          toast({
-            title: "Error",
-            description: "Failed to update quote",
-            variant: "destructive",
-          });
-          return;
-        }
-
+      if (quoteNumError) {
+        console.error('Error generating quote number:', quoteNumError);
         toast({
-          title: "Success",
-          description: `Quote ${editingQuote.quote_number} updated successfully!`,
+          title: "Error",
+          description: "Failed to generate quote number",
+          variant: "destructive",
         });
-      } else {
-        // Generate quote number with retry logic
-        let quoteNumber;
-        try {
-          quoteNumber = await generateQuoteNumberWithRetry();
-        } catch (error) {
-          console.error('Failed to generate quote number:', error);
-          toast({
-            title: "Error",
-            description: "Failed to generate quote number. Please try again.",
-            variant: "destructive",
-          });
-          return;
-        }
-
-        // Create new quote record with retry logic for duplicate prevention
-        let success = false;
-        for (let attempt = 1; attempt <= 3 && !success; attempt++) {
-          try {
-            console.log(`Attempting to create quote, attempt ${attempt}/3`);
-            
-            const { error: quoteError } = await supabase
-              .from('quotes')
-              .insert({
-                quote_number: quoteNumber,
-                ...quoteData
-              });
-
-            if (quoteError) {
-              if (quoteError.code === '23505' && quoteError.message.includes('quotes_quote_number_key')) {
-                console.log(`Quote number ${quoteNumber} already exists, regenerating...`);
-                // Generate a new quote number and try again
-                quoteNumber = await generateQuoteNumberWithRetry();
-              } else {
-                throw quoteError;
-              }
-            } else {
-              success = true;
-              console.log(`Quote created successfully with number: ${quoteNumber}`);
-            }
-          } catch (error) {
-            console.error(`Quote creation error (attempt ${attempt}):`, error);
-            if (attempt === 3) throw error;
-          }
-        }
-
-        if (!success) {
-          toast({
-            title: "Error",
-            description: "Failed to save quote after multiple attempts. Please try again.",
-            variant: "destructive",
-          });
-          return;
-        }
-
-        toast({
-          title: "Success",
-          description: `Quote ${quoteNumber} created successfully!`,
-        });
+        return;
       }
+
+      // Create quote record
+      const { error: quoteError } = await supabase
+        .from('quotes')
+        .insert({
+          quote_number: quoteNumber,
+          user_id: currentUser.id,
+          client_id: clientId,
+          property_type: formData.propertyType,
+          styling_type: formData.styling,
+          property_address: formData.propertyAddress,
+          distance_from_warehouse: formData.distanceFromWarehouse,
+          listing_price: formData.listingPrice,
+          access_difficulty: formData.accessDifficulty,
+          room_rate: formData.roomRate,
+          room_data: formData.rooms,
+          equivalent_room_count: calculations.equivalentRooms,
+          base_quote: calculations.baseQuote,
+          variation: calculations.variation,
+          final_quote: calculations.finalQuote,
+          status: 'pending',
+        });
+
+      if (quoteError) {
+        console.error('Error creating quote:', quoteError);
+        toast({
+          title: "Error",
+          description: "Failed to save quote",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      toast({
+        title: "Success",
+        description: `Quote ${quoteNumber} created successfully!`,
+      });
 
       onClose();
     } catch (error) {
       console.error('Error submitting quote:', error);
       toast({
         title: "Error",
-        description: "An unexpected error occurred. Please try again.",
+        description: "An unexpected error occurred",
         variant: "destructive",
       });
     } finally {
@@ -647,14 +527,17 @@ const QuoteForm = ({ onClose, editingQuote }: QuoteFormProps) => {
         <CardHeader className="pb-3">
           <CardTitle className="text-lg font-semibold text-slate-900 flex items-center gap-2">
             <Home className="h-5 w-5 text-blue-600" />
-            Property Information
+            Property Details
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <Label htmlFor="propertyType">Property Type *</Label>
-              <Select value={formData.propertyType} onValueChange={(value) => setFormData(prev => ({ ...prev, propertyType: value }))}>
+              <Select 
+                value={formData.propertyType} 
+                onValueChange={(value) => setFormData(prev => ({ ...prev, propertyType: value }))}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Select property type" />
                 </SelectTrigger>
@@ -666,8 +549,11 @@ const QuoteForm = ({ onClose, editingQuote }: QuoteFormProps) => {
               </Select>
             </div>
             <div>
-              <Label htmlFor="styling">Styling Type</Label>
-              <Select value={formData.styling} onValueChange={(value) => setFormData(prev => ({ ...prev, styling: value }))}>
+              <Label htmlFor="styling">Styling Type *</Label>
+              <Select 
+                value={formData.styling} 
+                onValueChange={(value) => setFormData(prev => ({ ...prev, styling: value }))}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -679,145 +565,174 @@ const QuoteForm = ({ onClose, editingQuote }: QuoteFormProps) => {
               </Select>
             </div>
           </div>
+          
           <div>
             <Label htmlFor="address">Property Address *</Label>
             <Input
               id="address"
-              placeholder="123 Main Street, City, State"
+              placeholder="Enter property address"
               value={formData.propertyAddress}
               onChange={(e) => setFormData(prev => ({ ...prev, propertyAddress: e.target.value }))}
             />
           </div>
-          {isAdmin && (
-            <>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+          <div className={`grid grid-cols-1 ${isAdmin ? 'md:grid-cols-3' : 'md:grid-cols-1'} gap-4`}>
+            {isAdmin && (
+              <>
                 <div>
-                  <Label htmlFor="distance">Distance from Warehouse (km)</Label>
+                  <Label htmlFor="distance">Distance from Warehouse (km) *</Label>
                   <Input
                     id="distance"
                     type="number"
                     min="0"
-                    value={formData.distanceFromWarehouse}
-                    onChange={(e) => setFormData(prev => ({ ...prev, distanceFromWarehouse: Number(e.target.value) }))}
+                    step="0.1"
+                    value={formData.distanceFromWarehouse || ''}
+                    onChange={(e) => setFormData(prev => ({ ...prev, distanceFromWarehouse: parseFloat(e.target.value) || 0 }))}
                   />
                 </div>
                 <div>
-                  <Label htmlFor="listingPrice">Listing Price ($)</Label>
+                  <Label htmlFor="listingPrice">Listing Price *</Label>
                   <Input
                     id="listingPrice"
                     type="number"
                     min="0"
-                    value={formData.listingPrice}
-                    onChange={(e) => setFormData(prev => ({ ...prev, listingPrice: Number(e.target.value) }))}
+                    placeholder="800000"
+                    value={formData.listingPrice || ''}
+                    onChange={(e) => setFormData(prev => ({ ...prev, listingPrice: parseFloat(e.target.value) || 0 }))}
                   />
                 </div>
-              </div>
-            </>
-          )}
-          <div>
-            <Label htmlFor="accessDifficulty">Access Difficulty</Label>
-            <Select value={formData.accessDifficulty} onValueChange={(value) => setFormData(prev => ({ ...prev, accessDifficulty: value }))}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select access difficulty" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Easy">Easy</SelectItem>
-                <SelectItem value="Standard">Standard</SelectItem>
-                <SelectItem value="Difficult">Difficult</SelectItem>
-                <SelectItem value="Very Difficult">Very Difficult</SelectItem>
-              </SelectContent>
-            </Select>
+              </>
+            )}
+            <div>
+              <Label htmlFor="accessDifficulty">Access Difficulty *</Label>
+              <Select 
+                value={formData.accessDifficulty} 
+                onValueChange={(value) => setFormData(prev => ({ ...prev, accessDifficulty: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select difficulty" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Easy">Easy</SelectItem>
+                  <SelectItem value="Standard">Standard</SelectItem>
+                  <SelectItem value="Difficult">Difficult</SelectItem>
+                  <SelectItem value="Very Difficult">Very Difficult</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
+
+          {isAdmin && (
+            <div>
+              <Label htmlFor="roomRate">Room Rate</Label>
+              <Input
+                id="roomRate"
+                type="number"
+                min="0"
+                value={formData.roomRate}
+                onChange={(e) => setFormData(prev => ({ ...prev, roomRate: parseFloat(e.target.value) || 400 }))}
+              />
+            </div>
+          )}
         </CardContent>
       </Card>
 
       {/* Room Configuration */}
       <Card className="border-0 shadow-sm">
         <CardHeader className="pb-3">
-          <CardTitle className="text-lg font-semibold text-slate-900 flex items-center gap-2">
-            <MapPin className="h-5 w-5 text-blue-600" />
+          <CardTitle className="text-lg font-semibold text-slate-900">
             Room Configuration
           </CardTitle>
-          {isAdmin && (
-            <div className="mt-4">
-              <Label htmlFor="roomRate">Room Rate ($)</Label>
-              <Input
-                id="roomRate"
-                type="number"
-                min="0"
-                value={formData.roomRate}
-                onChange={(e) => setFormData(prev => ({ ...prev, roomRate: Number(e.target.value) }))}
-                className="w-48"
-              />
-            </div>
-          )}
         </CardHeader>
         <CardContent>
-          <div className="rounded-lg border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Room Type</TableHead>
-                  <TableHead>Count</TableHead>
-                  <TableHead>Item Qty %</TableHead>
-                  {isAdmin && <TableHead>Weight</TableHead>}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {Object.entries(formData.rooms).map(([roomType, roomData]) => (
-                  <TableRow key={roomType}>
-                    <TableCell className="font-medium">{roomType}</TableCell>
-                    <TableCell>
-                      <Input
-                        type="number"
-                        min="0"
-                        value={roomData.count}
-                        onChange={(e) => updateRoomData(roomType, 'count', Number(e.target.value))}
-                        className="w-20"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Input
-                        type="number"
-                        min="0"
-                        max="100"
-                        value={roomData.percentage}
-                        onChange={(e) => updateRoomData(roomType, 'percentage', Number(e.target.value))}
-                        className="w-20"
-                      />
-                    </TableCell>
-                    {isAdmin && (
-                      <TableCell>
-                        <span className="text-sm text-gray-500">{roomData.weight}</span>
-                      </TableCell>
-                    )}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+          <div className="space-y-3">
+            <div className={`grid ${isAdmin ? 'grid-cols-12' : 'grid-cols-11'} gap-2 text-sm font-medium text-slate-600 pb-2 border-b`}>
+              <div className="col-span-5">Room Type</div>
+              <div className="col-span-3 text-center">Count</div>
+              <div className="col-span-3 text-center">Item Qty %</div>
+              {isAdmin && <div className="col-span-1 text-center">Weight</div>}
+            </div>
+
+            {Object.entries(formData.rooms).map(([roomType, room]) => (
+              <div key={roomType} className={`grid ${isAdmin ? 'grid-cols-12' : 'grid-cols-11'} gap-2 items-center py-1`}>
+                <div className="col-span-5 text-sm font-medium text-slate-700">
+                  {roomType}
+                  {roomType === 'Master Bedroom' && <span className="text-red-500 ml-1">*</span>}
+                </div>
+                <div className="col-span-3">
+                  <Input
+                    type="number"
+                    min="0"
+                    value={room.count}
+                    onChange={(e) => updateRoomData(roomType, 'count', parseInt(e.target.value) || 0)}
+                    className="text-center h-8"
+                  />
+                </div>
+                <div className="col-span-3">
+                  <Input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={room.percentage}
+                    onChange={(e) => updateRoomData(roomType, 'percentage', parseInt(e.target.value) || 100)}
+                    className="text-center h-8"
+                  />
+                </div>
+                {isAdmin && (
+                  <div className="col-span-1 text-center text-sm text-slate-600">
+                    {room.weight}
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         </CardContent>
       </Card>
 
+      {/* Calculations - Only for Admin */}
+      {isAdmin && (
+        <Card className="border-0 shadow-sm bg-gradient-to-r from-blue-50 to-indigo-50">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+              <Calculator className="h-5 w-5 text-blue-600" />
+              Quote Calculation
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex justify-between items-center">
+              <span className="text-sm font-medium text-slate-700">Equivalent Room Count:</span>
+              <span className="text-sm font-semibold text-slate-900">{calculations.equivalentRooms}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm font-medium text-slate-700">Base Quote:</span>
+              <span className="text-sm font-semibold text-slate-900">${calculations.baseQuote.toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm font-medium text-slate-700">Variation:</span>
+              <span className={`text-sm font-semibold ${calculations.variation >= 0 ? 'text-red-600' : 'text-green-600'}`}>
+                {calculations.variation >= 0 ? '+' : ''}${calculations.variation.toLocaleString()}
+              </span>
+            </div>
+            <Separator />
+            <div className="flex justify-between items-center">
+              <span className="text-lg font-bold text-slate-900">Final Quote:</span>
+              <span className="text-2xl font-bold text-blue-600">${calculations.finalQuote.toLocaleString()}</span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Actions */}
-      <div className="flex justify-end gap-3 pt-4">
-        <Button 
-          variant="outline" 
-          onClick={onClose}
-          disabled={submitting}
-        >
+      <div className="flex gap-3 pt-4">
+        <Button variant="outline" onClick={onClose} className="flex-1" disabled={submitting}>
           Cancel
         </Button>
-        <Button 
-          onClick={handleSubmit}
-          disabled={submitting}
-          className="bg-blue-600 hover:bg-blue-700"
-        >
-          {submitting ? 'Saving...' : editingQuote ? 'Update Quote' : 'Generate Quote'}
+        <Button onClick={handleSubmit} className="flex-1 bg-blue-600 hover:bg-blue-700" disabled={submitting}>
+          {submitting ? 'Saving...' : 'Generate Quote'}
         </Button>
       </div>
     </div>
   );
 };
 
-export default QuoteForm;
+export { QuoteForm };

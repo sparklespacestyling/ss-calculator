@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { HomeTab } from '@/components/HomeTab';
 import { QuotesTab } from '@/components/QuotesTab';
 import { SettingsTab } from '@/components/SettingsTab';
-import QuoteForm from '@/components/QuoteForm';
+import { QuoteForm } from '@/components/QuoteForm';
 import { QuoteDetailView } from '@/components/QuoteDetailView';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
