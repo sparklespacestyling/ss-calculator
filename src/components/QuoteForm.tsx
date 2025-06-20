@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,6 +9,14 @@ import { Separator } from '@/components/ui/separator';
 import { Calculator, User, MapPin, DollarSign, Home } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 
 interface QuoteFormProps {
   onClose: () => void;
@@ -64,7 +73,7 @@ const QuoteForm = ({ onClose, editingQuote }: QuoteFormProps) => {
   const [submitting, setSubmitting] = useState(false);
   const [clients, setClients] = useState<any[]>([]);
   const [clientSuggestions, setClientSuggestions] = useState<any[]>([]);
-  const [showClientSuggestions, setShowQuoteSuggestions] = useState(false);
+  const [showClientSuggestions, setShowClientSuggestions] = useState(false);
   const { toast } = useToast();
 
   // Default room types with weights (fallback)
@@ -236,9 +245,9 @@ const QuoteForm = ({ onClose, editingQuote }: QuoteFormProps) => {
         client.email.toLowerCase().includes(value.toLowerCase())
       );
       setClientSuggestions(filtered);
-      setShowQuoteSuggestions(true);
+      setShowClientSuggestions(true);
     } else {
-      setShowQuoteSuggestions(false);
+      setShowClientSuggestions(false);
     }
   };
 
@@ -249,7 +258,7 @@ const QuoteForm = ({ onClose, editingQuote }: QuoteFormProps) => {
       email: client.email,
       contactPerson: client.contact_person || ''
     }));
-    setShowQuoteSuggestions(false);
+    setShowClientSuggestions(false);
   };
 
   const calculateQuote = () => {
@@ -588,11 +597,11 @@ const QuoteForm = ({ onClose, editingQuote }: QuoteFormProps) => {
                 value={formData.client}
                 onChange={(e) => handleClientSearch(e.target.value)}
                 onFocus={() => {
-                  if (formData.client.length > 0) setShowQuoteSuggestions(true);
+                  if (formData.client.length > 0) setShowClientSuggestions(true);
                 }}
                 onBlur={() => {
                   // Delay hiding suggestions to allow clicking
-                  setTimeout(() => setShowQuoteSuggestions(false), 200);
+                  setTimeout(() => setShowClientSuggestions(false), 200);
                 }}
               />
               {showClientSuggestions && clientSuggestions.length > 0 && (
@@ -744,78 +753,49 @@ const QuoteForm = ({ onClose, editingQuote }: QuoteFormProps) => {
           )}
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            {Object.entries(formData.rooms).map(([roomType, roomData]) => (
-              <div key={roomType} className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-slate-50 rounded-lg">
-                <div className="flex items-center">
-                  <span className="font-medium text-sm">{roomType}</span>
-                  <span className="ml-2 text-xs text-slate-500">(Weight: {roomData.weight})</span>
-                </div>
-                <div>
-                  <Label htmlFor={`${roomType}-count`} className="text-xs">Count</Label>
-                  <Input
-                    id={`${roomType}-count`}
-                    type="number"
-                    min="0"
-                    value={roomData.count}
-                    onChange={(e) => updateRoomData(roomType, 'count', Number(e.target.value))}
-                    className="h-8"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor={`${roomType}-percentage`} className="text-xs">Percentage (%)</Label>
-                  <Input
-                    id={`${roomType}-percentage`}
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={roomData.percentage}
-                    onChange={(e) => updateRoomData(roomType, 'percentage', Number(e.target.value))}
-                    className="h-8"
-                  />
-                </div>
-              </div>
-            ))}
+          <div className="rounded-lg border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Room Type</TableHead>
+                  <TableHead>Count</TableHead>
+                  <TableHead>Item Qty %</TableHead>
+                  {isAdmin && <TableHead>Weight</TableHead>}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {Object.entries(formData.rooms).map(([roomType, roomData]) => (
+                  <TableRow key={roomType}>
+                    <TableCell className="font-medium">{roomType}</TableCell>
+                    <TableCell>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={roomData.count}
+                        onChange={(e) => updateRoomData(roomType, 'count', Number(e.target.value))}
+                        className="w-20"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={roomData.percentage}
+                        onChange={(e) => updateRoomData(roomType, 'percentage', Number(e.target.value))}
+                        className="w-20"
+                      />
+                    </TableCell>
+                    {isAdmin && (
+                      <TableCell>
+                        <span className="text-sm text-gray-500">{roomData.weight}</span>
+                      </TableCell>
+                    )}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Quote Summary - Only show final quote for admin users */}
-      <Card className="border-0 shadow-sm">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg font-semibold text-slate-900 flex items-center gap-2">
-            <Calculator className="h-5 w-5 text-blue-600" />
-            Quote Summary
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-blue-50 p-4 rounded-lg">
-              <div className="text-sm text-blue-600 font-medium">Equivalent Room Count</div>
-              <div className="text-2xl font-bold text-blue-700">{calculations.equivalentRooms}</div>
-            </div>
-            <div className="bg-green-50 p-4 rounded-lg">
-              <div className="text-sm text-green-600 font-medium">Base Quote</div>
-              <div className="text-2xl font-bold text-green-700">${calculations.baseQuote.toLocaleString()}</div>
-            </div>
-          </div>
-          {isAdmin && (
-            <>
-              <Separator />
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-orange-50 p-4 rounded-lg">
-                  <div className="text-sm text-orange-600 font-medium">Variation</div>
-                  <div className="text-2xl font-bold text-orange-700">
-                    {calculations.variation >= 0 ? '+' : ''}${calculations.variation.toLocaleString()}
-                  </div>
-                </div>
-                <div className="bg-purple-50 p-4 rounded-lg">
-                  <div className="text-sm text-purple-600 font-medium">Final Quote</div>
-                  <div className="text-2xl font-bold text-purple-700">${calculations.finalQuote.toLocaleString()}</div>
-                </div>
-              </div>
-            </>
-          )}
         </CardContent>
       </Card>
 
