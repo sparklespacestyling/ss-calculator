@@ -336,48 +336,50 @@ const QuoteForm = ({ onClose }: QuoteFormProps) => {
     }));
   };
 
-  // Enhanced quote number generation with better retry logic
-  const generateUniqueQuoteNumber = async (maxRetries = 5): Promise<string> => {
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+  // Improved quote number generation with better uniqueness checking
+  const generateUniqueQuoteNumber = async (): Promise<string> => {
+    const maxAttempts = 10;
+    
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        console.log(`Attempting to generate quote number, attempt ${attempt}/${maxRetries}`);
+        console.log(`Generating quote number, attempt ${attempt}/${maxAttempts}`);
         
-        // Add a small random delay to reduce race conditions
-        if (attempt > 1) {
-          await new Promise(resolve => setTimeout(resolve, Math.random() * 1000 + 500));
-        }
+        // Generate a timestamp-based quote number for better uniqueness
+        const now = new Date();
+        const year = now.getFullYear();
+        const timestamp = now.getTime();
+        const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+        const potentialQuoteNumber = `Q-${year}-${timestamp}-${random}`;
         
-        const { data: quoteNumber, error } = await supabase.rpc('generate_quote_number');
+        // Check if this quote number already exists
+        const { data: existingQuote, error: checkError } = await supabase
+          .from('quotes')
+          .select('id')
+          .eq('quote_number', potentialQuoteNumber)
+          .maybeSingle();
 
-        if (error) {
-          console.error(`Quote number generation error (attempt ${attempt}):`, error);
-          if (attempt === maxRetries) throw error;
+        if (checkError) {
+          console.error(`Error checking quote number uniqueness (attempt ${attempt}):`, checkError);
+          if (attempt === maxAttempts) throw checkError;
           continue;
         }
 
-        // Verify the quote number is unique before returning
-        const { data: existingQuote } = await supabase
-          .from('quotes')
-          .select('id')
-          .eq('quote_number', quoteNumber)
-          .single();
-
         if (!existingQuote) {
-          console.log(`Quote number generated successfully: ${quoteNumber}`);
-          return quoteNumber;
+          console.log(`Unique quote number generated: ${potentialQuoteNumber}`);
+          return potentialQuoteNumber;
         } else {
-          console.log(`Quote number ${quoteNumber} already exists, retrying...`);
-          if (attempt === maxRetries) {
-            throw new Error('Unable to generate unique quote number');
-          }
+          console.log(`Quote number ${potentialQuoteNumber} already exists, trying again...`);
         }
       } catch (error) {
         console.error(`Quote number generation failed (attempt ${attempt}):`, error);
-        if (attempt === maxRetries) throw error;
+        if (attempt === maxAttempts) throw error;
       }
+      
+      // Add delay between attempts to reduce race conditions
+      await new Promise(resolve => setTimeout(resolve, 100 + Math.random() * 200));
     }
     
-    throw new Error('Failed to generate quote number after maximum retries');
+    throw new Error('Failed to generate unique quote number after maximum attempts');
   };
 
   const handleSubmit = async () => {
@@ -471,7 +473,7 @@ const QuoteForm = ({ onClose }: QuoteFormProps) => {
         calculatedValues = calculations;
       }
 
-      // Create quote record with atomic operation
+      // Create quote record with proper error handling
       const { error: quoteError } = await supabase
         .from('quotes')
         .insert({
@@ -496,7 +498,7 @@ const QuoteForm = ({ onClose }: QuoteFormProps) => {
       if (quoteError) {
         console.error('Error creating quote:', quoteError);
         
-        // Handle specific duplicate key error
+        // Handle specific duplicate key error with retry
         if (quoteError.code === '23505' && quoteError.message.includes('quotes_quote_number_key')) {
           toast({
             title: "Error",
