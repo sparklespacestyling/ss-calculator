@@ -154,6 +154,9 @@ const QuoteDetailView = ({ quoteId, onBack, onQuoteUpdated }: QuoteDetailViewPro
           status: editedQuote.status,
           property_address: editedQuote.property_address,
           access_difficulty: editedQuote.access_difficulty,
+          distance_from_warehouse: editedQuote.distance_from_warehouse,
+          listing_price: editedQuote.listing_price,
+          room_data: editedQuote.room_data,
           updated_at: new Date().toISOString()
         })
         .eq('id', quoteId);
@@ -201,6 +204,19 @@ const QuoteDetailView = ({ quoteId, onBack, onQuoteUpdated }: QuoteDetailViewPro
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleRoomDataChange = (roomType: string, field: string, value: number) => {
+    setEditedQuote(prev => ({
+      ...prev,
+      room_data: {
+        ...prev.room_data,
+        [roomType]: {
+          ...prev.room_data?.[roomType],
+          [field]: value
+        }
+      }
+    }));
   };
 
   const getStatusColor = (status: string) => {
@@ -414,18 +430,30 @@ const QuoteDetailView = ({ quoteId, onBack, onQuoteUpdated }: QuoteDetailViewPro
             )}
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {isAdmin && (
-              <>
-                <div>
-                  <Label>Distance from Warehouse</Label>
-                  <p className="text-slate-900 font-medium">{quote.distance_from_warehouse} km</p>
-                </div>
-                <div>
-                  <Label>Listing Price</Label>
-                  <p className="text-slate-900 font-medium">${quote.listing_price.toLocaleString()}</p>
-                </div>
-              </>
-            )}
+            <div>
+              <Label>Distance from Warehouse</Label>
+              {editing && isAdmin ? (
+                <Input
+                  type="number"
+                  value={editedQuote.distance_from_warehouse || ''}
+                  onChange={(e) => setEditedQuote(prev => ({ ...prev, distance_from_warehouse: parseFloat(e.target.value) || 0 }))}
+                />
+              ) : (
+                <p className="text-slate-900 font-medium">{quote.distance_from_warehouse} km</p>
+              )}
+            </div>
+            <div>
+              <Label>Listing Price</Label>
+              {editing && isAdmin ? (
+                <Input
+                  type="number"
+                  value={editedQuote.listing_price || ''}
+                  onChange={(e) => setEditedQuote(prev => ({ ...prev, listing_price: parseFloat(e.target.value) || 0 }))}
+                />
+              ) : (
+                <p className="text-slate-900 font-medium">${quote.listing_price?.toLocaleString()}</p>
+              )}
+            </div>
             <div>
               <Label>Access Difficulty</Label>
               {editing && isAdmin ? (
@@ -460,29 +488,48 @@ const QuoteDetailView = ({ quoteId, onBack, onQuoteUpdated }: QuoteDetailViewPro
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            <div className={`grid ${isAdmin ? 'grid-cols-12' : 'grid-cols-11'} gap-2 text-sm font-medium text-slate-600 pb-2 border-b`}>
+            <div className="grid grid-cols-12 gap-2 text-sm font-medium text-slate-600 pb-2 border-b">
               <div className="col-span-5">Room Type</div>
               <div className="col-span-3 text-center">Count</div>
               <div className="col-span-3 text-center">Item Qty %</div>
-              {isAdmin && <div className="col-span-1 text-center">Weight</div>}
+              <div className="col-span-1 text-center">Weight</div>
             </div>
 
             {Object.entries(quote.room_data).map(([roomType, room]: [string, any]) => (
-              <div key={roomType} className={`grid ${isAdmin ? 'grid-cols-12' : 'grid-cols-11'} gap-2 items-center py-1`}>
+              <div key={roomType} className="grid grid-cols-12 gap-2 items-center py-1">
                 <div className="col-span-5 text-sm font-medium text-slate-700">
                   {roomType}
                 </div>
-                <div className="col-span-3 text-center text-sm text-slate-900">
-                  {room.count}
+                <div className="col-span-3 text-center">
+                  {editing && isAdmin ? (
+                    <Input
+                      type="number"
+                      value={editedQuote.room_data?.[roomType]?.count || room.count}
+                      onChange={(e) => handleRoomDataChange(roomType, 'count', parseInt(e.target.value) || 0)}
+                      className="text-center text-sm"
+                      min="0"
+                    />
+                  ) : (
+                    <span className="text-sm text-slate-900">{room.count}</span>
+                  )}
                 </div>
-                <div className="col-span-3 text-center text-sm text-slate-900">
-                  {room.percentage}%
+                <div className="col-span-3 text-center">
+                  {editing && isAdmin ? (
+                    <Input
+                      type="number"
+                      value={editedQuote.room_data?.[roomType]?.percentage || room.percentage}
+                      onChange={(e) => handleRoomDataChange(roomType, 'percentage', parseInt(e.target.value) || 0)}
+                      className="text-center text-sm"
+                      min="0"
+                      max="100"
+                    />
+                  ) : (
+                    <span className="text-sm text-slate-900">{room.percentage}%</span>
+                  )}
                 </div>
-                {isAdmin && (
-                  <div className="col-span-1 text-center text-sm text-slate-600">
-                    {room.weight}
-                  </div>
-                )}
+                <div className="col-span-1 text-center text-sm text-slate-600">
+                  {room.weight}
+                </div>
               </div>
             ))}
           </div>
