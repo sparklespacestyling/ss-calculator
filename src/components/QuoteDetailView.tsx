@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { ArrowLeft, Edit3, Save, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -34,6 +33,7 @@ interface QuoteData {
   equivalent_room_count: number;
   base_quote: number;
   variation: number;
+  user_id: string;
   clients: {
     id: string;
     name: string;
@@ -53,19 +53,33 @@ const QuoteDetailView = ({ quoteId, onBack, onQuoteUpdated }: QuoteDetailViewPro
 
   useEffect(() => {
     fetchCurrentUser();
-    fetchQuote();
-  }, [quoteId]);
+  }, []);
+
+  useEffect(() => {
+    if (currentUser !== null) {
+      fetchQuote();
+    }
+  }, [quoteId, currentUser]);
 
   const fetchCurrentUser = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
+      console.log('QuoteDetailView - Current auth user:', user);
+      
       if (user) {
-        const { data: profile } = await supabase
+        const { data: profile, error } = await supabase
           .from('profiles')
           .select('*')
           .eq('id', user.id)
           .single();
-        setCurrentUser(profile);
+        
+        console.log('QuoteDetailView - User profile:', profile, 'Error:', error);
+        
+        if (error) {
+          console.error('Error fetching profile:', error);
+        } else {
+          setCurrentUser(profile);
+        }
       }
     } catch (error) {
       console.error('Error fetching user:', error);
@@ -74,7 +88,10 @@ const QuoteDetailView = ({ quoteId, onBack, onQuoteUpdated }: QuoteDetailViewPro
 
   const fetchQuote = async () => {
     try {
-      const { data, error } = await supabase
+      console.log('Fetching quote with ID:', quoteId);
+      console.log('Current user for quote fetch:', currentUser);
+      
+      let query = supabase
         .from('quotes')
         .select(`
           *,
@@ -85,15 +102,34 @@ const QuoteDetailView = ({ quoteId, onBack, onQuoteUpdated }: QuoteDetailViewPro
             contact_person
           )
         `)
-        .eq('id', quoteId)
-        .single();
+        .eq('id', quoteId);
+
+      const { data, error } = await query.single();
+
+      console.log('Quote fetch result:', data, 'Error:', error);
 
       if (error) {
+        console.error('Error fetching quote:', error);
         toast({
           title: "Error",
           description: "Failed to fetch quote details",
           variant: "destructive",
         });
+        return;
+      }
+
+      // Check if user has access to this quote
+      const { data: { user } } = await supabase.auth.getUser();
+      const isAdmin = currentUser?.role === 'admin';
+      const isOwner = user && data.user_id === user.id;
+
+      if (!isAdmin && !isOwner) {
+        toast({
+          title: "Access Denied",
+          description: "You don't have permission to view this quote",
+          variant: "destructive",
+        });
+        onBack();
         return;
       }
 

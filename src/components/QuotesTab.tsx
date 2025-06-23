@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Search, Filter, MoreVertical } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -42,19 +41,50 @@ const QuotesTab = ({ onViewQuote }: QuotesTabProps) => {
 
   useEffect(() => {
     fetchCurrentUser();
-    fetchQuotes();
   }, []);
+
+  useEffect(() => {
+    if (currentUser !== null) {
+      fetchQuotes();
+    }
+  }, [currentUser]);
 
   const fetchCurrentUser = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
+      console.log('Current auth user:', user);
+      
       if (user) {
-        const { data: profile } = await supabase
+        const { data: profile, error } = await supabase
           .from('profiles')
           .select('*')
           .eq('id', user.id)
           .single();
-        setCurrentUser(profile);
+        
+        console.log('User profile:', profile, 'Error:', error);
+        
+        if (error) {
+          console.error('Error fetching profile:', error);
+          // Create profile if it doesn't exist
+          const { data: newProfile, error: createError } = await supabase
+            .from('profiles')
+            .insert({
+              id: user.id,
+              email: user.email || '',
+              name: user.user_metadata?.name || '',
+              role: 'regular'
+            })
+            .select()
+            .single();
+          
+          if (createError) {
+            console.error('Error creating profile:', createError);
+          } else {
+            setCurrentUser(newProfile);
+          }
+        } else {
+          setCurrentUser(profile);
+        }
       }
     } catch (error) {
       console.error('Error fetching user:', error);
@@ -63,7 +93,9 @@ const QuotesTab = ({ onViewQuote }: QuotesTabProps) => {
 
   const fetchQuotes = async () => {
     try {
-      const { data, error } = await supabase
+      console.log('Fetching quotes for user:', currentUser);
+      
+      let query = supabase
         .from('quotes')
         .select(`
           id,
@@ -75,6 +107,7 @@ const QuotesTab = ({ onViewQuote }: QuotesTabProps) => {
           property_type,
           styling_type,
           property_address,
+          user_id,
           clients (
             name,
             email
@@ -82,7 +115,20 @@ const QuotesTab = ({ onViewQuote }: QuotesTabProps) => {
         `)
         .order('created_at', { ascending: false });
 
+      // If not admin, only show user's own quotes
+      if (currentUser?.role !== 'admin') {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          query = query.eq('user_id', user.id);
+        }
+      }
+
+      const { data, error } = await query;
+
+      console.log('Quotes query result:', data, 'Error:', error);
+
       if (error) {
+        console.error('Error fetching quotes:', error);
         toast({
           title: "Error",
           description: "Failed to fetch quotes",
