@@ -89,13 +89,17 @@ const QuoteDetailView = ({ quoteId, onBack, onQuoteUpdated }: QuoteDetailViewPro
   const calculateQuoteVariation = () => {
     if (!editedQuote || !rateSettings) return;
 
-    // Calculate equivalent room count
+    // Calculate equivalent room count with proper type checking
     const equivalentRooms = Object.values(editedQuote.room_data || {}).reduce((total: number, room: any) => {
-      return total + (room.count * (room.percentage / 100) * room.weight);
+      const count = Number(room.count) || 0;
+      const percentage = Number(room.percentage) || 0;
+      const weight = Number(room.weight) || 0;
+      return total + (count * (percentage / 100) * weight);
     }, 0);
 
-    // Calculate base quote
-    const baseQuote = equivalentRooms * (editedQuote.room_rate || 400);
+    // Calculate base quote with proper type conversion
+    const roomRate = Number(editedQuote.room_rate) || 400;
+    const baseQuote = equivalentRooms * roomRate;
 
     // Calculate penalty/reward rates using flexible rate settings
     let totalRate = 0;
@@ -109,19 +113,21 @@ const QuoteDetailView = ({ quoteId, onBack, onQuoteUpdated }: QuoteDetailViewPro
         : flexibleRates.house_ranges;
       
       if (propertyRanges && editedQuote.listing_price) {
+        const listingPrice = Number(editedQuote.listing_price) || 0;
         for (const range of propertyRanges) {
-          if (editedQuote.listing_price >= range.min && editedQuote.listing_price < range.max) {
-            totalRate += range.rate / 100; // Convert percentage to decimal
+          if (listingPrice >= range.min && listingPrice < range.max) {
+            totalRate += Number(range.rate) / 100 || 0; // Convert percentage to decimal
             break;
           }
         }
       }
 
-      // Distance rates
+      // Distance rates with proper type conversion
       if (flexibleRates.distance_ranges && editedQuote.distance_from_warehouse !== undefined) {
+        const distance = Number(editedQuote.distance_from_warehouse) || 0;
         for (const range of flexibleRates.distance_ranges) {
-          if (editedQuote.distance_from_warehouse >= range.min && editedQuote.distance_from_warehouse < range.max) {
-            totalRate += range.rate / 100; // Convert percentage to decimal
+          if (distance >= range.min && distance < range.max) {
+            totalRate += Number(range.rate) / 100 || 0; // Convert percentage to decimal
             break;
           }
         }
@@ -131,7 +137,7 @@ const QuoteDetailView = ({ quoteId, onBack, onQuoteUpdated }: QuoteDetailViewPro
       if (flexibleRates.access_difficulty_rates && editedQuote.access_difficulty) {
         const difficultyRate = flexibleRates.access_difficulty_rates[editedQuote.access_difficulty];
         if (difficultyRate !== undefined) {
-          totalRate += difficultyRate / 100; // Convert percentage to decimal
+          totalRate += Number(difficultyRate) / 100 || 0; // Convert percentage to decimal
         }
       }
     }
