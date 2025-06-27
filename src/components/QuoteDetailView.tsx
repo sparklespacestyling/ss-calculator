@@ -116,7 +116,7 @@ const QuoteDetailView = ({ quoteId, onBack, onQuoteUpdated }: QuoteDetailViewPro
         const listingPrice = Number(editedQuote.listing_price) || 0;
         for (const range of propertyRanges) {
           if (listingPrice >= range.min && listingPrice < range.max) {
-            totalRate += Number(range.rate) || 0; // This is already a percentage like 5, 10, -5, etc.
+            totalRate += Number(range.rate) || 0;
             break;
           }
         }
@@ -127,7 +127,7 @@ const QuoteDetailView = ({ quoteId, onBack, onQuoteUpdated }: QuoteDetailViewPro
         const distance = Number(editedQuote.distance_from_warehouse) || 0;
         for (const range of flexibleRates.distance_ranges) {
           if (distance >= range.min && distance < range.max) {
-            totalRate += Number(range.rate) || 0; // This is already a percentage like 5, 10, -5, etc.
+            totalRate += Number(range.rate) || 0;
             break;
           }
         }
@@ -137,14 +137,15 @@ const QuoteDetailView = ({ quoteId, onBack, onQuoteUpdated }: QuoteDetailViewPro
       if (flexibleRates.access_difficulty_rates && editedQuote.access_difficulty) {
         const difficultyRate = flexibleRates.access_difficulty_rates[editedQuote.access_difficulty];
         if (difficultyRate !== undefined) {
-          totalRate += Number(difficultyRate) || 0; // This is already a percentage like 5, 10, -5, etc.
+          totalRate += Number(difficultyRate) || 0;
         }
       }
     }
 
     // Calculate variation and final quote
-    // totalRate is in percentage format (e.g., 5 for 5%, -10 for -10%)
-    // Convert to decimal by dividing by 100, then multiply by base quote
+    // Apply the formula: Variation = Penalty/Reward Rates × Base Quote
+    // totalRate is stored as whole numbers (e.g., 5 for 5%, 10 for 10%, -5 for -5%)
+    // So we convert to decimal by dividing by 100
     const variation = Number((totalRate / 100) * baseQuote);
     const finalQuote = Number(baseQuote + variation);
 
