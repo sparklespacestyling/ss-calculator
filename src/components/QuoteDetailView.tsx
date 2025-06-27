@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { ArrowLeft, Edit3, Save, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -90,16 +91,16 @@ const QuoteDetailView = ({ quoteId, onBack, onQuoteUpdated }: QuoteDetailViewPro
     if (!editedQuote || !rateSettings) return;
 
     // Calculate equivalent room count with proper type checking
-    const equivalentRooms = Object.values(editedQuote.room_data || {}).reduce((total: number, room: any) => {
+    const equivalentRooms = Number(Object.values(editedQuote.room_data || {}).reduce((total: number, room: any) => {
       const count = Number(room.count) || 0;
       const percentage = Number(room.percentage) || 0;
       const weight = Number(room.weight) || 0;
       return total + (count * (percentage / 100) * weight);
-    }, 0);
+    }, 0));
 
     // Calculate base quote with proper type conversion
     const roomRate = Number(editedQuote.room_rate) || 400;
-    const baseQuote = equivalentRooms * roomRate;
+    const baseQuote = Number(equivalentRooms * roomRate);
 
     // Calculate penalty/reward rates using flexible rate settings
     let totalRate = 0;
@@ -142,9 +143,9 @@ const QuoteDetailView = ({ quoteId, onBack, onQuoteUpdated }: QuoteDetailViewPro
       }
     }
 
-    // Calculate variation and final quote
-    const variation = totalRate * baseQuote;
-    const finalQuote = baseQuote + variation;
+    // Calculate variation and final quote with explicit number conversion
+    const variation = Number(Number(totalRate) * baseQuote);
+    const finalQuote = Number(baseQuote + variation);
 
     setEditedQuote(prev => ({
       ...prev,
