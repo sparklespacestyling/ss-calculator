@@ -144,9 +144,8 @@ const QuoteDetailView = ({ quoteId, onBack, onQuoteUpdated }: QuoteDetailViewPro
 
     // Calculate variation and final quote
     // Apply the formula: Variation = Penalty/Reward Rates × Base Quote
-    // totalRate is stored as whole numbers (e.g., 5 for 5%, 10 for 10%, -5 for -5%)
-    // So we convert to decimal by dividing by 100
-    const variation = Number((totalRate / 100) * baseQuote);
+    // totalRate is already in decimal format (e.g., 0.20 for 20%)
+    const variation = Number(totalRate * baseQuote);
     const finalQuote = Number(baseQuote + variation);
 
     setEditedQuote(prev => ({
