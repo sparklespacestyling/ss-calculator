@@ -49,10 +49,12 @@ const QuoteDetailView = ({ quoteId, onBack, onQuoteUpdated }: QuoteDetailViewPro
   const [saving, setSaving] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [editedQuote, setEditedQuote] = useState<Partial<QuoteData>>({});
+  const [rateSettings, setRateSettings] = useState<any>(null);
   const { toast } = useToast();
 
   useEffect(() => {
     fetchCurrentUser();
+    fetchRateSettings();
   }, []);
 
   useEffect(() => {
@@ -60,6 +62,92 @@ const QuoteDetailView = ({ quoteId, onBack, onQuoteUpdated }: QuoteDetailViewPro
       fetchQuote();
     }
   }, [quoteId, currentUser]);
+
+  // Recalculate quote when relevant fields change during editing
+  useEffect(() => {
+    if (editing && editedQuote && rateSettings) {
+      calculateQuoteVariation();
+    }
+  }, [editedQuote.distance_from_warehouse, editedQuote.listing_price, editedQuote.access_difficulty, editedQuote.room_data, editedQuote.room_rate, editing, rateSettings]);
+
+  const fetchRateSettings = async () => {
+    try {
+      const { data } = await supabase
+        .from('settings')
+        .select('setting_value')
+        .eq('setting_key', 'rate_configuration')
+        .single();
+
+      if (data && data.setting_value) {
+        setRateSettings(data.setting_value);
+      }
+    } catch (error) {
+      console.error('Error fetching rate settings:', error);
+    }
+  };
+
+  const calculateQuoteVariation = () => {
+    if (!editedQuote || !rateSettings) return;
+
+    // Calculate equivalent room count
+    const equivalentRooms = Object.values(editedQuote.room_data || {}).reduce((total: number, room: any) => {
+      return total + (room.count * (room.percentage / 100) * room.weight);
+    }, 0);
+
+    // Calculate base quote
+    const baseQuote = equivalentRooms * (editedQuote.room_rate || 400);
+
+    // Calculate penalty/reward rates using flexible rate settings
+    let totalRate = 0;
+    
+    const flexibleRates = rateSettings as any;
+    
+    if (flexibleRates.apartment_ranges || flexibleRates.house_ranges) {
+      // Use new flexible rate system
+      const propertyRanges = editedQuote.property_type === 'Apartment' 
+        ? flexibleRates.apartment_ranges 
+        : flexibleRates.house_ranges;
+      
+      if (propertyRanges && editedQuote.listing_price) {
+        for (const range of propertyRanges) {
+          if (editedQuote.listing_price >= range.min && editedQuote.listing_price < range.max) {
+            totalRate += range.rate / 100; // Convert percentage to decimal
+            break;
+          }
+        }
+      }
+
+      // Distance rates
+      if (flexibleRates.distance_ranges && editedQuote.distance_from_warehouse !== undefined) {
+        for (const range of flexibleRates.distance_ranges) {
+          if (editedQuote.distance_from_warehouse >= range.min && editedQuote.distance_from_warehouse < range.max) {
+            totalRate += range.rate / 100; // Convert percentage to decimal
+            break;
+          }
+        }
+      }
+
+      // Access difficulty rates
+      if (flexibleRates.access_difficulty_rates && editedQuote.access_difficulty) {
+        const difficultyRate = flexibleRates.access_difficulty_rates[editedQuote.access_difficulty];
+        if (difficultyRate !== undefined) {
+          totalRate += difficultyRate / 100; // Convert percentage to decimal
+        }
+      }
+    }
+
+    // Calculate variation and final quote
+    const variation = totalRate * baseQuote;
+    const finalQuote = baseQuote + variation;
+
+    setEditedQuote(prev => ({
+      ...prev,
+      equivalent_room_count: Math.round(equivalentRooms * 100) / 100,
+      base_quote: Math.round(baseQuote),
+      variation: Math.round(variation),
+      final_quote: Math.round(finalQuote),
+    }));
+  };
 
   const fetchCurrentUser = async () => {
     try {
@@ -157,6 +245,10 @@ const QuoteDetailView = ({ quoteId, onBack, onQuoteUpdated }: QuoteDetailViewPro
           distance_from_warehouse: editedQuote.distance_from_warehouse,
           listing_price: editedQuote.listing_price,
           room_data: editedQuote.room_data,
+          equivalent_room_count: editedQuote.equivalent_room_count,
+          base_quote: editedQuote.base_quote,
+          variation: editedQuote.variation,
+          room_rate: editedQuote.room_rate,
           updated_at: new Date().toISOString()
         })
         .eq('id', quoteId);
@@ -335,7 +427,7 @@ const QuoteDetailView = ({ quoteId, onBack, onQuoteUpdated }: QuoteDetailViewPro
                   />
                 ) : (
                   <p className="text-2xl font-bold text-blue-600">
-                    ${quote.final_quote.toLocaleString()}
+                    ${(editedQuote.final_quote || quote.final_quote).toLocaleString()}
                   </p>
                 )}
               </div>
@@ -547,26 +639,35 @@ const QuoteDetailView = ({ quoteId, onBack, onQuoteUpdated }: QuoteDetailViewPro
           <CardContent className="space-y-3">
             <div className="flex justify-between items-center">
               <span className="text-sm font-medium text-slate-700">Equivalent Room Count:</span>
-              <span className="text-sm font-semibold text-slate-900">{quote.equivalent_room_count}</span>
+              <span className="text-sm font-semibold text-slate-900">{editedQuote.equivalent_room_count || quote.equivalent_room_count}</span>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-sm font-medium text-slate-700">Room Rate:</span>
-              <span className="text-sm font-semibold text-slate-900">${quote.room_rate}</span>
+              {editing && isAdmin ? (
+                <Input
+                  type="number"
+                  value={editedQuote.room_rate || ''}
+                  onChange={(e) => setEditedQuote(prev => ({ ...prev, room_rate: parseFloat(e.target.value) || 400 }))}
+                  className="text-right text-sm font-semibold text-slate-900 w-24"
+                />
+              ) : (
+                <span className="text-sm font-semibold text-slate-900">${quote.room_rate}</span>
+              )}
             </div>
             <div className="flex justify-between items-center">
               <span className="text-sm font-medium text-slate-700">Base Quote:</span>
-              <span className="text-sm font-semibold text-slate-900">${quote.base_quote.toLocaleString()}</span>
+              <span className="text-sm font-semibold text-slate-900">${(editedQuote.base_quote || quote.base_quote).toLocaleString()}</span>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-sm font-medium text-slate-700">Variation:</span>
-              <span className={`text-sm font-semibold ${quote.variation >= 0 ? 'text-red-600' : 'text-green-600'}`}>
-                {quote.variation >= 0 ? '+' : ''}${quote.variation.toLocaleString()}
+              <span className={`text-sm font-semibold ${(editedQuote.variation || quote.variation) >= 0 ? 'text-red-600' : 'text-green-600'}`}>
+                {(editedQuote.variation || quote.variation) >= 0 ? '+' : ''}${(editedQuote.variation || quote.variation).toLocaleString()}
               </span>
             </div>
             <Separator />
             <div className="flex justify-between items-center">
               <span className="text-lg font-bold text-slate-900">Final Quote:</span>
-              <span className="text-2xl font-bold text-blue-600">${quote.final_quote.toLocaleString()}</span>
+              <span className="text-2xl font-bold text-blue-600">${(editedQuote.final_quote || quote.final_quote).toLocaleString()}</span>
             </div>
           </CardContent>
         </Card>
