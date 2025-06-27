@@ -9,6 +9,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -37,6 +43,7 @@ const QuotesTab = ({ onViewQuote }: QuotesTabProps) => {
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [statusFilters, setStatusFilters] = useState<string[]>([]);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -199,11 +206,29 @@ const QuotesTab = ({ onViewQuote }: QuotesTabProps) => {
     }
   };
 
-  const filteredQuotes = quotes.filter(quote =>
-    quote.clients?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    quote.property_address.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    quote.quote_number.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredQuotes = quotes.filter(quote => {
+    const matchesSearch = quote.clients?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      quote.property_address.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      quote.quote_number.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    const matchesStatus = statusFilters.length === 0 || statusFilters.includes(quote.status);
+    
+    return matchesSearch && matchesStatus;
+  });
+
+  const handleStatusFilterChange = (status: string, checked: boolean) => {
+    setStatusFilters(prev => {
+      if (checked) {
+        return [...prev, status];
+      } else {
+        return prev.filter(s => s !== status);
+      }
+    });
+  };
+
+  const clearFilters = () => {
+    setStatusFilters([]);
+  };
 
   const isAdmin = currentUser?.role === 'admin';
 
@@ -236,32 +261,75 @@ const QuotesTab = ({ onViewQuote }: QuotesTabProps) => {
             className="pl-10 border-slate-200 focus:border-blue-300 focus:ring-blue-200"
           />
         </div>
-        <Button variant="outline" size="icon" className="border-slate-200">
-          <Filter className="h-4 w-4" />
-        </Button>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="icon" className="border-slate-200 relative">
+              <Filter className="h-4 w-4" />
+              {statusFilters.length > 0 && (
+                <span className="absolute -top-1 -right-1 bg-blue-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                  {statusFilters.length}
+                </span>
+              )}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-56" align="end">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="font-medium text-sm">Filter by Status</h4>
+                {statusFilters.length > 0 && (
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={clearFilters}
+                    className="text-xs h-auto p-1"
+                  >
+                    Clear
+                  </Button>
+                )}
+              </div>
+              <div className="space-y-2">
+                {['pending', 'accepted', 'rejected', 'voided'].map((status) => (
+                  <div key={status} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={`filter-${status}`}
+                      checked={statusFilters.includes(status)}
+                      onCheckedChange={(checked) => handleStatusFilterChange(status, checked as boolean)}
+                    />
+                    <label
+                      htmlFor={`filter-${status}`}
+                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 capitalize"
+                    >
+                      {status}
+                    </label>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </PopoverContent>
+        </Popover>
       </div>
 
       {/* Summary Stats */}
       <div className="grid grid-cols-4 gap-2">
         <div className="bg-blue-50 rounded-lg p-3 text-center">
-          <p className="text-lg font-bold text-blue-700">{quotes.length}</p>
+          <p className="text-lg font-bold text-blue-700">{filteredQuotes.length}</p>
           <p className="text-xs text-blue-600">Total</p>
         </div>
         <div className="bg-yellow-50 rounded-lg p-3 text-center">
           <p className="text-lg font-bold text-yellow-700">
-            {quotes.filter(q => q.status === 'pending').length}
+            {filteredQuotes.filter(q => q.status === 'pending').length}
           </p>
           <p className="text-xs text-yellow-600">Pending</p>
         </div>
         <div className="bg-green-50 rounded-lg p-3 text-center">
           <p className="text-lg font-bold text-green-700">
-            {quotes.filter(q => q.status === 'accepted').length}
+            {filteredQuotes.filter(q => q.status === 'accepted').length}
           </p>
           <p className="text-xs text-green-600">Accepted</p>
         </div>
         <div className="bg-red-50 rounded-lg p-3 text-center">
           <p className="text-lg font-bold text-red-700">
-            {quotes.filter(q => q.status === 'rejected').length}
+            {filteredQuotes.filter(q => q.status === 'rejected').length}
           </p>
           <p className="text-xs text-red-600">Rejected</p>
         </div>
@@ -271,8 +339,8 @@ const QuotesTab = ({ onViewQuote }: QuotesTabProps) => {
       <div className="space-y-3">
         {filteredQuotes.length === 0 ? (
           <div className="text-center py-8">
-            {searchQuery ? (
-              <p className="text-slate-500">No quotes found matching "{searchQuery}"</p>
+            {searchQuery || statusFilters.length > 0 ? (
+              <p className="text-slate-500">No quotes found matching your filters</p>
             ) : (
               <p className="text-slate-500">No quotes found. Create your first quote using the + button!</p>
             )}
