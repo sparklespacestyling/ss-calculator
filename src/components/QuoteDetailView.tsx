@@ -52,6 +52,10 @@ const QuoteDetailView = ({ quoteId, onBack, onQuoteUpdated }: QuoteDetailViewPro
   const [rateSettings, setRateSettings] = useState<any>(null);
   const { toast } = useToast();
 
+  // Derived values
+  const isAdmin = currentUser?.role === 'admin';
+  const shouldShowAmount = quote?.status !== 'pending' || isAdmin;
+
   useEffect(() => {
     fetchCurrentUser();
     fetchRateSettings();
@@ -337,6 +341,22 @@ const QuoteDetailView = ({ quoteId, onBack, onQuoteUpdated }: QuoteDetailViewPro
   const handlePrint = () => {
     window.print();
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-slate-500">Loading quote details...</p>
+      </div>
+    );
+  }
+
+  if (!quote) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-slate-500">Quote not found</p>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 space-y-4">
@@ -688,7 +708,7 @@ const QuoteDetailView = ({ quoteId, onBack, onQuoteUpdated }: QuoteDetailViewPro
       </Card>
 
       {/* Print styles */}
-      <style jsx global>{`
+      <style global>{`
         @media print {
           @page {
             size: A4;
