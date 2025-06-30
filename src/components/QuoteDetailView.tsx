@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Edit3, Save, X } from 'lucide-react';
+import { ArrowLeft, Edit3, Save, X, Printer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -334,38 +334,16 @@ const QuoteDetailView = ({ quoteId, onBack, onQuoteUpdated }: QuoteDetailViewPro
     }
   };
 
-  if (loading) {
-    return (
-      <div className="p-4 space-y-4">
-        <div className="text-center py-8">
-          <p className="text-slate-500">Loading quote details...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!quote) {
-    return (
-      <div className="p-4 space-y-4">
-        <div className="text-center py-8">
-          <p className="text-slate-500">Quote not found</p>
-          <Button onClick={onBack} className="mt-4">
-            Go Back
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  const isAdmin = currentUser?.role === 'admin';
-  const shouldShowAmount = isAdmin || quote.updated_at !== quote.created_at;
+  const handlePrint = () => {
+    window.print();
+  };
 
   return (
     <div className="p-4 space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={onBack}>
+          <Button variant="ghost" size="icon" onClick={onBack} className="print:hidden">
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>
@@ -373,33 +351,45 @@ const QuoteDetailView = ({ quoteId, onBack, onQuoteUpdated }: QuoteDetailViewPro
             <p className="text-sm text-slate-600">Quote Details</p>
           </div>
         </div>
-        {isAdmin && (
-          <div className="flex gap-2">
-            {editing ? (
-              <>
-                <Button variant="outline" size="sm" onClick={() => setEditing(false)} disabled={saving}>
-                  <X className="h-4 w-4 mr-1" />
-                  Cancel
+        <div className="flex gap-2 print:hidden">
+          <Button variant="outline" size="sm" onClick={handlePrint}>
+            <Printer className="h-4 w-4 mr-1" />
+            Print
+          </Button>
+          {isAdmin && (
+            <div className="flex gap-2">
+              {editing ? (
+                <>
+                  <Button variant="outline" size="sm" onClick={() => setEditing(false)} disabled={saving}>
+                    <X className="h-4 w-4 mr-1" />
+                    Cancel
+                  </Button>
+                  <Button size="sm" onClick={handleSave} disabled={saving}>
+                    <Save className="h-4 w-4 mr-1" />
+                    {saving ? 'Saving...' : 'Save'}
+                  </Button>
+                </>
+              ) : (
+                <Button size="sm" onClick={() => setEditing(true)}>
+                  <Edit3 className="h-4 w-4 mr-1" />
+                  Edit
                 </Button>
-                <Button size="sm" onClick={handleSave} disabled={saving}>
-                  <Save className="h-4 w-4 mr-1" />
-                  {saving ? 'Saving...' : 'Save'}
-                </Button>
-              </>
-            ) : (
-              <Button size="sm" onClick={() => setEditing(true)}>
-                <Edit3 className="h-4 w-4 mr-1" />
-                Edit
-              </Button>
-            )}
-          </div>
-        )}
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Print-specific header */}
+      <div className="hidden print:block text-center mb-6">
+        <h1 className="text-2xl font-bold text-slate-900 mb-2">QUOTE</h1>
+        <h2 className="text-xl font-semibold text-slate-700">{quote.quote_number}</h2>
       </div>
 
       {/* Quote Status */}
-      <Card className="border-0 shadow-sm">
+      <Card className="border-0 shadow-sm print:shadow-none print:border">
         <CardContent className="pt-6">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between print:flex-col print:items-start print:gap-4">
             <div>
               <p className="text-sm text-slate-600">Status</p>
               {editing && isAdmin ? (
@@ -424,7 +414,7 @@ const QuoteDetailView = ({ quoteId, onBack, onQuoteUpdated }: QuoteDetailViewPro
               )}
             </div>
             {shouldShowAmount && (
-              <div className="text-right">
+              <div className="text-right print:text-left">
                 <p className="text-sm text-slate-600">Final Quote</p>
                 {editing && isAdmin ? (
                   <Input
@@ -434,7 +424,7 @@ const QuoteDetailView = ({ quoteId, onBack, onQuoteUpdated }: QuoteDetailViewPro
                     className="text-right text-2xl font-bold text-blue-600 w-48 mt-1"
                   />
                 ) : (
-                  <p className="text-2xl font-bold text-blue-600">
+                  <p className="text-2xl font-bold text-blue-600 print:text-3xl">
                     ${(editedQuote.final_quote || quote.final_quote).toLocaleString()}
                   </p>
                 )}
@@ -445,7 +435,7 @@ const QuoteDetailView = ({ quoteId, onBack, onQuoteUpdated }: QuoteDetailViewPro
       </Card>
 
       {/* Client Information */}
-      <Card className="border-0 shadow-sm">
+      <Card className="border-0 shadow-sm print:shadow-none print:border print:break-inside-avoid">
         <CardHeader>
           <CardTitle className="text-lg font-semibold text-slate-900">
             Client Information
@@ -501,7 +491,7 @@ const QuoteDetailView = ({ quoteId, onBack, onQuoteUpdated }: QuoteDetailViewPro
       </Card>
 
       {/* Property Information */}
-      <Card className="border-0 shadow-sm">
+      <Card className="border-0 shadow-sm print:shadow-none print:border print:break-inside-avoid">
         <CardHeader>
           <CardTitle className="text-lg font-semibold text-slate-900">
             Property Details
@@ -580,7 +570,7 @@ const QuoteDetailView = ({ quoteId, onBack, onQuoteUpdated }: QuoteDetailViewPro
       </Card>
 
       {/* Room Configuration */}
-      <Card className="border-0 shadow-sm">
+      <Card className="border-0 shadow-sm print:shadow-none print:border print:break-inside-avoid">
         <CardHeader>
           <CardTitle className="text-lg font-semibold text-slate-900">
             Room Configuration
@@ -638,7 +628,7 @@ const QuoteDetailView = ({ quoteId, onBack, onQuoteUpdated }: QuoteDetailViewPro
 
       {/* Quote Calculations - Admin Only */}
       {isAdmin && (
-        <Card className="border-0 shadow-sm bg-gradient-to-r from-blue-50 to-indigo-50">
+        <Card className="border-0 shadow-sm bg-gradient-to-r from-blue-50 to-indigo-50 print:bg-white print:shadow-none print:border print:break-inside-avoid">
           <CardHeader>
             <CardTitle className="text-lg font-semibold text-slate-900">
               Quote Calculation
@@ -682,7 +672,7 @@ const QuoteDetailView = ({ quoteId, onBack, onQuoteUpdated }: QuoteDetailViewPro
       )}
 
       {/* Quote Metadata */}
-      <Card className="border-0 shadow-sm">
+      <Card className="border-0 shadow-sm print:shadow-none print:border print:break-inside-avoid">
         <CardContent className="pt-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
             <div>
@@ -696,6 +686,77 @@ const QuoteDetailView = ({ quoteId, onBack, onQuoteUpdated }: QuoteDetailViewPro
           </div>
         </CardContent>
       </Card>
+
+      {/* Print styles */}
+      <style jsx global>{`
+        @media print {
+          @page {
+            size: A4;
+            margin: 1cm;
+          }
+          
+          body {
+            font-size: 12px !important;
+            line-height: 1.4 !important;
+            color: black !important;
+            background: white !important;
+          }
+          
+          .print\\:hidden {
+            display: none !important;
+          }
+          
+          .print\\:block {
+            display: block !important;
+          }
+          
+          .print\\:flex {
+            display: flex !important;
+          }
+          
+          .print\\:flex-col {
+            flex-direction: column !important;
+          }
+          
+          .print\\:items-start {
+            align-items: flex-start !important;
+          }
+          
+          .print\\:gap-4 {
+            gap: 1rem !important;
+          }
+          
+          .print\\:text-left {
+            text-align: left !important;
+          }
+          
+          .print\\:text-3xl {
+            font-size: 1.875rem !important;
+            line-height: 2.25rem !important;
+          }
+          
+          .print\\:shadow-none {
+            box-shadow: none !important;
+          }
+          
+          .print\\:border {
+            border: 1px solid #e2e8f0 !important;
+          }
+          
+          .print\\:bg-white {
+            background-color: white !important;
+          }
+          
+          .print\\:break-inside-avoid {
+            break-inside: avoid !important;
+          }
+          
+          * {
+            -webkit-print-color-adjust: exact !important;
+            color-adjust: exact !important;
+          }
+        }
+      `}</style>
     </div>
   );
 };
