@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { ArrowLeft, Edit3, Save, X, Printer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -708,7 +709,7 @@ const QuoteDetailView = ({ quoteId, onBack, onQuoteUpdated }: QuoteDetailViewPro
       </Card>
 
       {/* Print styles */}
-      <style global>{`
+      <style>{`
         @media print {
           @page {
             size: A4;
