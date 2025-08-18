@@ -5,8 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { Calculator, Home, Printer } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { Calculator, Home, Printer, Plus, X } from 'lucide-react';
 
 interface RoomData {
   [key: string]: {
@@ -27,51 +26,90 @@ interface CalculatorFormData {
   rooms: RoomData;
 }
 
-interface RateSettings {
-  apartment_low_threshold: number;
-  apartment_high_threshold: number;
-  house_low_threshold: number;
-  house_high_threshold: number;
-  distance_close_threshold: number;
-  distance_medium_min: number;
-  distance_medium_max: number;
-  distance_far_min: number;
-  penalty_discount: number;
-  reward_bonus: number;
-  distance_close_discount: number;
-  distance_medium_fee: number;
-  distance_far_fee: number;
-  access_standard_fee: number;
-  access_difficult_fee: number;
-  access_very_difficult_fee: number;
+interface PriceRange {
+  maxPrice: number;
+  rate: number;
 }
 
-const QuoteCalculator = () => {
-  const [currentUser, setCurrentUser] = useState<{role?: string} | null>(null);
-  const [rateSettings, setRateSettings] = useState<RateSettings | null>(null);
-  const [roomSettings, setRoomSettings] = useState<Record<string, {weight: number; default_count: number}> | null>(null);
-  const [propertyTypes, setPropertyTypes] = useState<string[]>(['Apartment', 'House']);
-  const [stylingTypes, setStylingTypes] = useState<string[]>(['Full', 'Partial']);
+interface DistanceRange {
+  maxDistance: number;
+  rate: number;
+}
 
-  // Default room types with weights (fallback)
-  const defaultRooms = {
-    'Foyer/Entry': { count: 0, percentage: 100, weight: 0.5 },
-    'Living Room': { count: 0, percentage: 100, weight: 2 },
-    'Family Room/Lounge': { count: 0, percentage: 100, weight: 1.5 },
-    'Dining Room': { count: 0, percentage: 100, weight: 1 },
-    'Kitchen': { count: 0, percentage: 100, weight: 0.5 },
+interface RateSettings {
+  apartmentPriceRanges: PriceRange[];
+  housePriceRanges: PriceRange[];
+  distanceRanges: DistanceRange[];
+  accessDifficultyRates: {
+    [key: string]: number;
+  };
+}
+
+// Static configuration - no database required
+const staticRateSettings: RateSettings = {
+  apartmentPriceRanges: [
+    { maxPrice: 600000, rate: -0.1 },   // <$600k: -10%
+    { maxPrice: 800000, rate: -0.05 },  // <$800k: -5%
+    { maxPrice: 1000000, rate: 0 },     // <$1000k: 0%
+    { maxPrice: Infinity, rate: 0 },    // $1000k+: 0%
+  ],
+  housePriceRanges: [
+    { maxPrice: 1500000, rate: -0.1 },  // <$1500k: -10%
+    { maxPrice: 2000000, rate: -0.05 }, // <$2000k: -5%
+    { maxPrice: 3000000, rate: 0 },     // <$3000k: 0%
+    { maxPrice: 5000000, rate: 0.05 },  // <$5000k: +5%
+    { maxPrice: 7000000, rate: 0.1 },   // <$7000k: +10%
+    { maxPrice: 10000000, rate: 0.2 },  // <$10000k: +20%
+    { maxPrice: Infinity, rate: 0.2 },  // $10000k+: +20%
+  ],
+  distanceRanges: [
+    { maxDistance: 15, rate: 0 },       // <15km: 0%
+    { maxDistance: 30, rate: 0.05 },    // <30km: +5%
+    { maxDistance: 50, rate: 0.1 },     // <50km: +10%
+    { maxDistance: 80, rate: 0.25 },    // <80km: +25%
+    { maxDistance: Infinity, rate: 0.25 }, // 80km+: +25%
+  ],
+  accessDifficultyRates: {
+    'Easy': 0,      // 0%
+    'Standard': 0.05, // +5%
+    'Difficult': 0.1, // +10%
+  },
+};
+
+const staticPropertyTypes = ['Apartment', 'House'];
+const staticStylingTypes = ['Full', 'Partial'];
+
+const QuoteCalculator = () => {
+  // Use static configuration instead of database state
+  const propertyTypes = staticPropertyTypes;
+  const stylingTypes = staticStylingTypes;
+
+  // Core room types (always visible)
+  const coreRooms = {
+    'Living Room': { count: 1, percentage: 100, weight: 2 },
+    'Dining Room': { count: 1, percentage: 100, weight: 1 },
+    'Kitchen': { count: 1, percentage: 100, weight: 0.5 },
     'Master Bedroom': { count: 1, percentage: 100, weight: 1.5 },
     'Master Wardrobe': { count: 0, percentage: 100, weight: 0.5 },
     'Standard Bedroom': { count: 0, percentage: 100, weight: 1 },
     'Standard Bathroom': { count: 0, percentage: 100, weight: 0.25 },
+    'Outdoor (large)': { count: 0, percentage: 100, weight: 1.5 },
+    'Outdoor (small)': { count: 0, percentage: 100, weight: 0.5 },
+  };
+
+  // Optional room types (hidden by default)
+  const optionalRooms = {
+    'Foyer/Entry': { count: 0, percentage: 100, weight: 0.5 },
+    'Family Room/Lounge': { count: 0, percentage: 100, weight: 1.5 },
     'Hallway': { count: 0, percentage: 100, weight: 0.5 },
     'Pantry': { count: 0, percentage: 100, weight: 0.25 },
     'Laundry': { count: 0, percentage: 100, weight: 0.25 },
     'Office': { count: 0, percentage: 100, weight: 1 },
     'Study': { count: 0, percentage: 100, weight: 1 },
-    'Outdoor (large)': { count: 0, percentage: 100, weight: 1.5 },
-    'Outdoor (small)': { count: 0, percentage: 100, weight: 0.5 },
   };
+
+  // Combine all rooms
+  const allRooms = { ...coreRooms, ...optionalRooms };
 
   const [formData, setFormData] = useState<CalculatorFormData>({
     propertyType: '',
@@ -81,7 +119,7 @@ const QuoteCalculator = () => {
     listingPrice: 0,
     accessDifficulty: '',
     roomRate: 400,
-    rooms: defaultRooms,
+    rooms: allRooms,
   });
 
   const [calculations, setCalculations] = useState({
@@ -93,78 +131,13 @@ const QuoteCalculator = () => {
 
   const [isRoomRateCustomized, setIsRoomRateCustomized] = useState(false);
   const [isAccessDifficultyCustomized, setIsAccessDifficultyCustomized] = useState(false);
+  const [hiddenRooms, setHiddenRooms] = useState<Set<string>>(new Set(Object.keys(optionalRooms)));
 
-  const fetchCurrentUser = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .single();
-      setCurrentUser(profile);
-    }
-  }, []);
-
-  const fetchSettings = useCallback(async () => {
-    try {
-      // Fetch rate settings
-      const { data: rateData } = await supabase
-        .from('settings')
-        .select('setting_value')
-        .eq('setting_key', 'rate_configuration')
-        .single();
-
-      if (rateData && typeof rateData.setting_value === 'object' && rateData.setting_value !== null) {
-        setRateSettings(rateData.setting_value as unknown as RateSettings);
-      }
-
-      // Fetch room settings
-      const { data: roomData } = await supabase
-        .from('settings')
-        .select('setting_value')
-        .eq('setting_key', 'room_types')
-        .single();
-
-      if (roomData) {
-        setRoomSettings(roomData.setting_value);
-        // Update room weights and default counts from settings
-        const updatedRooms = { ...formData.rooms };
-        Object.entries(roomData.setting_value as Record<string, {weight: number; default_count: number}>).forEach(([roomType, config]) => {
-          if (updatedRooms[roomType]) {
-            updatedRooms[roomType].weight = config.weight;
-            updatedRooms[roomType].count = config.default_count;
-          }
-        });
-        setFormData(prev => ({ ...prev, rooms: updatedRooms }));
-      }
-
-      // Fetch property types
-      const { data: propertyData } = await supabase
-        .from('settings')
-        .select('setting_value')
-        .eq('setting_key', 'property_types')
-        .single();
-
-      if (propertyData && propertyData.setting_value) {
-        const settings = propertyData.setting_value as {property_types?: string[]; styling_options?: string[]};
-        if (settings.property_types) setPropertyTypes(settings.property_types);
-        if (settings.styling_options) setStylingTypes(settings.styling_options);
-      }
-    } catch (error) {
-      console.error('Error fetching settings:', error);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchCurrentUser();
-    fetchSettings();
-  }, [fetchCurrentUser, fetchSettings]);
 
   // Auto-adjust access difficulty based on property type
   useEffect(() => {
     if (!isAccessDifficultyCustomized && formData.propertyType) {
-      const newAccessDifficulty = formData.propertyType === 'Apartment' ? 'Difficult' : 'Easy';
+      const newAccessDifficulty = formData.propertyType === 'Apartment' ? 'Difficult' : 'Standard';
       if (formData.accessDifficulty !== newAccessDifficulty) {
         setFormData(prev => ({ ...prev, accessDifficulty: newAccessDifficulty }));
       }
@@ -190,80 +163,26 @@ const QuoteCalculator = () => {
     // Calculate base quote
     const baseQuote = equivalentRooms * formData.roomRate;
 
-    // Calculate penalty/reward rates using flexible rate settings
+    // Calculate penalty/reward rates using static configuration
     let totalRate = 0;
+    const settings = staticRateSettings;
     
-    if (rateSettings) {
-      // Check if we have the new flexible rate structure
-      const flexibleRates = rateSettings as RateSettings & {
-        apartment_ranges?: Array<{min: number; max: number; rate: number}>;
-        house_ranges?: Array<{min: number; max: number; rate: number}>;
-        distance_ranges?: Array<{min: number; max: number; rate: number}>;
-        access_difficulty_rates?: Record<string, number>;
-      };
-      
-      if (flexibleRates.apartment_ranges || flexibleRates.house_ranges) {
-        // Use new flexible rate system
-        const propertyRanges = formData.propertyType === 'Apartment' 
-          ? flexibleRates.apartment_ranges 
-          : flexibleRates.house_ranges;
-        
-        if (propertyRanges) {
-          for (const range of propertyRanges) {
-            if (formData.listingPrice >= range.min && formData.listingPrice < range.max) {
-              totalRate += range.rate;
-              break;
-            }
-          }
-        }
-
-        // Distance rates
-        if (flexibleRates.distance_ranges) {
-          for (const range of flexibleRates.distance_ranges) {
-            if (formData.distanceFromWarehouse >= range.min && formData.distanceFromWarehouse < range.max) {
-              totalRate += range.rate;
-              break;
-            }
-          }
-        }
-
-        // Access difficulty rates
-        if (flexibleRates.access_difficulty_rates && formData.accessDifficulty) {
-          const difficultyRate = flexibleRates.access_difficulty_rates[formData.accessDifficulty];
-          if (difficultyRate !== undefined) {
-            totalRate += difficultyRate;
-          }
-        }
-      } else {
-        // Fallback to old rate system for backward compatibility
-        const settings = rateSettings as RateSettings;
-        
-        // Listing price rates
-        if (formData.propertyType === 'Apartment') {
-          if (formData.listingPrice < settings.apartment_low_threshold) totalRate -= settings.penalty_discount;
-          else if (formData.listingPrice > settings.apartment_high_threshold) totalRate += settings.reward_bonus;
-        } else if (formData.propertyType === 'House') {
-          if (formData.listingPrice < settings.house_low_threshold) totalRate -= settings.penalty_discount;
-          else if (formData.listingPrice > settings.house_high_threshold) totalRate += settings.reward_bonus;
-        }
-
-        // Distance rates
-        if (formData.distanceFromWarehouse < settings.distance_close_threshold) {
-          totalRate -= settings.distance_close_discount;
-        } else if (formData.distanceFromWarehouse >= settings.distance_medium_min && formData.distanceFromWarehouse < settings.distance_medium_max) {
-          totalRate += settings.distance_medium_fee;
-        } else if (formData.distanceFromWarehouse >= settings.distance_far_min) {
-          totalRate += settings.distance_far_fee;
-        }
-
-        // Access difficulty rates
-        switch (formData.accessDifficulty) {
-          case 'Standard': totalRate += settings.access_standard_fee; break;
-          case 'Difficult': totalRate += settings.access_difficult_fee; break;
-          case 'Very Difficult': totalRate += settings.access_very_difficult_fee; break;
-        }
-      }
+    // Listing price rates
+    if (formData.propertyType === 'Apartment') {
+      const priceRange = settings.apartmentPriceRanges.find(range => formData.listingPrice < range.maxPrice);
+      if (priceRange) totalRate += priceRange.rate;
+    } else if (formData.propertyType === 'House') {
+      const priceRange = settings.housePriceRanges.find(range => formData.listingPrice < range.maxPrice);
+      if (priceRange) totalRate += priceRange.rate;
     }
+
+    // Distance rates
+    const distanceRange = settings.distanceRanges.find(range => formData.distanceFromWarehouse < range.maxDistance);
+    if (distanceRange) totalRate += distanceRange.rate;
+
+    // Access difficulty rates
+    const accessRate = settings.accessDifficultyRates[formData.accessDifficulty];
+    if (accessRate !== undefined) totalRate += accessRate;
 
     // Calculate variation and final quote
     const variation = totalRate * baseQuote;
@@ -271,11 +190,11 @@ const QuoteCalculator = () => {
 
     setCalculations({
       equivalentRooms: Math.round(equivalentRooms * 100) / 100,
-      baseQuote: Math.round(baseQuote),
-      variation: Math.round(variation),
-      finalQuote: Math.round(finalQuote),
+      baseQuote: Math.round(baseQuote * 100) / 100,
+      variation: Math.round(variation * 100) / 100,
+      finalQuote: Math.round(finalQuote * 100) / 100,
     });
-  }, [formData.rooms, formData.roomRate, formData.listingPrice, formData.distanceFromWarehouse, formData.accessDifficulty, formData.propertyType, rateSettings]);
+  }, [formData.rooms, formData.roomRate, formData.listingPrice, formData.distanceFromWarehouse, formData.accessDifficulty, formData.propertyType]);
 
   // Calculate quote whenever relevant fields change
   useEffect(() => {
@@ -295,6 +214,27 @@ const QuoteCalculator = () => {
     }));
   };
 
+  const toggleOptionalRoom = (roomType: string) => {
+    setHiddenRooms(prev => {
+      const newHiddenRooms = new Set(prev);
+      if (newHiddenRooms.has(roomType)) {
+        // Show the room
+        newHiddenRooms.delete(roomType);
+      } else {
+        // Hide the room and reset its values to defaults
+        newHiddenRooms.add(roomType);
+        setFormData(prevData => ({
+          ...prevData,
+          rooms: {
+            ...prevData.rooms,
+            [roomType]: optionalRooms[roomType], // Reset to default values
+          },
+        }));
+      }
+      return newHiddenRooms;
+    });
+  };
+
   const handlePrint = () => {
     window.print();
   };
@@ -304,9 +244,14 @@ const QuoteCalculator = () => {
       <style>{`
         @page {
           size: A4;
-          margin: 0.5in;
+          margin: 0.4in;
         }
         @media print {
+          * {
+            -webkit-print-color-adjust: exact !important;
+            color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
           .no-print {
             display: none !important;
           }
@@ -315,6 +260,9 @@ const QuoteCalculator = () => {
           }
           .calculator-inputs {
             display: none !important;
+          }
+          .space-y-6 {
+            gap: 0 !important;
           }
           header {
             display: none !important;
@@ -328,38 +276,54 @@ const QuoteCalculator = () => {
             overflow: hidden;
           }
           .print-container {
-            max-height: 9.5in;
+            max-height: 9in;
             overflow: hidden;
-            font-size: clamp(10pt, 2vw, 14pt);
+            font-size: 11pt;
+            page-break-after: avoid;
           }
           .print-header {
             text-align: center;
-            margin-bottom: 20px;
+            margin-bottom: 16px;
           }
           .print-section {
-            margin-bottom: 15px;
-            page-break-inside: avoid;
+            margin-bottom: 12px;
           }
           .print-row {
             display: grid;
             grid-template-columns: 1fr auto;
-            gap: 20px;
-            margin-bottom: 6px;
+            gap: 8px;
+            margin-bottom: 4px;
             border-bottom: 1px solid #e2e8f0;
-            padding-bottom: 4px;
+            padding-bottom: 3px;
             font-size: inherit;
             align-items: center;
           }
           .print-total {
             font-weight: bold;
-            font-size: calc(1em + 2pt);
+            font-size: 12pt;
             border-top: 2px solid #334155;
-            padding-top: 8px;
-            margin-top: 15px;
+            padding-top: 6px;
+            margin-top: 12px;
+          }
+          .print-final-quote {
+            color: #dc2626 !important;
+            -webkit-print-color-adjust: exact !important;
+            color-adjust: exact !important;
+            print-color-adjust: exact !important;
           }
           h1, h2, h3 {
             margin-top: 0;
-            margin-bottom: 8px;
+            margin-bottom: 6px;
+          }
+        }
+        @media print and (max-width: 768px) {
+          body {
+            min-height: auto !important;
+          }
+          .print-container {
+            height: auto !important;
+            max-height: none !important;
+            overflow: visible !important;
           }
         }
         .print-only {
@@ -370,12 +334,12 @@ const QuoteCalculator = () => {
       {/* Print Header - only visible when printing */}
       <div className="print-only print-container">
         <div className="print-header">
-          <h1 style={{fontSize: 'calc(1em + 4pt)', fontWeight: 'bold', marginBottom: '8px'}}>Sparkle Space</h1>
-          <h2 style={{fontSize: 'calc(1em + 2pt)', marginBottom: '15px'}}>Property Styling Quote</h2>
+          <h1 style={{fontSize: '14pt', fontWeight: 'bold', marginBottom: '8px'}}>Sparkle Space</h1>
+          <h2 style={{fontSize: '12pt', marginBottom: '15px'}}>Property Styling Quote</h2>
         </div>
         
         <div className="print-section">
-          <h3 style={{fontSize: 'calc(1em + 1pt)', fontWeight: 'bold', marginBottom: '8px'}}>Property Details</h3>
+          <h3 style={{fontSize: '11pt', fontWeight: 'bold', marginBottom: '8px'}}>Property Details</h3>
           <div className="print-row">
             <span>Property Type:</span>
             <span>{formData.propertyType}</span>
@@ -387,7 +351,7 @@ const QuoteCalculator = () => {
           {formData.propertyAddress && (
             <div className="print-row">
               <span>Property Address:</span>
-              <span>{formData.propertyAddress}</span>
+              <span style={{color: '#2563eb', fontWeight: 'bold'}}>{formData.propertyAddress}</span>
             </div>
           )}
           <div className="print-row">
@@ -404,12 +368,12 @@ const QuoteCalculator = () => {
           </div>
           <div className="print-row">
             <span>Room Rate:</span>
-            <span>${formData.roomRate}</span>
+            <span style={{color: '#2563eb', fontWeight: 'bold'}}>${formData.roomRate}</span>
           </div>
         </div>
 
         <div className="print-section">
-          <h3 style={{fontSize: 'calc(1em + 1pt)', fontWeight: 'bold', marginBottom: '8px'}}>Room Breakdown</h3>
+          <h3 style={{fontSize: '11pt', fontWeight: 'bold', marginBottom: '8px'}}>Room Breakdown</h3>
           {Object.entries(formData.rooms)
             .filter(([, room]) => room.count > 0)
             .map(([roomType, room]) => {
@@ -424,24 +388,24 @@ const QuoteCalculator = () => {
         </div>
 
         <div className="print-section">
-          <h3 style={{fontSize: 'calc(1em + 1pt)', fontWeight: 'bold', marginBottom: '8px'}}>Quote Summary</h3>
+          <h3 style={{fontSize: '11pt', fontWeight: 'bold', marginBottom: '8px'}}>Quote Summary</h3>
           <div className="print-row">
             <span>Equivalent Room Count:</span>
             <span>{calculations.equivalentRooms}</span>
           </div>
           <div className="print-row">
             <span>Base Quote:</span>
-            <span>${calculations.baseQuote.toLocaleString()}</span>
+            <span>${calculations.baseQuote.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
           </div>
           <div className="print-row">
             <span>Variation:</span>
             <span style={{color: calculations.variation >= 0 ? '#dc2626' : '#16a34a'}}>
-              {calculations.variation >= 0 ? '+' : ''}${calculations.variation.toLocaleString()}
+              {calculations.variation >= 0 ? '+' : ''}${calculations.variation.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
           </div>
           <div className="print-total print-row">
             <span>Final Quote:</span>
-            <span>${calculations.finalQuote.toLocaleString()}</span>
+            <span className="print-final-quote" style={{color: '#dc2626', fontWeight: 'bold'}}>${calculations.finalQuote.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
           </div>
         </div>
       </div>
@@ -543,7 +507,6 @@ const QuoteCalculator = () => {
                   <SelectItem value="Easy">Easy</SelectItem>
                   <SelectItem value="Standard">Standard</SelectItem>
                   <SelectItem value="Difficult">Difficult</SelectItem>
-                  <SelectItem value="Very Difficult">Very Difficult</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -581,7 +544,9 @@ const QuoteCalculator = () => {
               <div className="col-span-1 text-center">Weight</div>
             </div>
 
-            {Object.entries(formData.rooms).map(([roomType, room]) => (
+            {Object.entries(formData.rooms)
+              .filter(([roomType]) => !hiddenRooms.has(roomType))
+              .map(([roomType, room]) => (
               <div key={roomType} className="grid grid-cols-12 gap-2 items-center py-1">
                 <div className="col-span-5 text-sm font-medium text-slate-700">
                   {roomType}
@@ -615,6 +580,47 @@ const QuoteCalculator = () => {
         </CardContent>
       </Card>
 
+      {/* Optional Rooms */}
+      <Card className="border-0 shadow-sm calculator-inputs">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg font-semibold text-slate-900">
+            Optional Rooms
+          </CardTitle>
+          <p className="text-sm text-slate-600 mt-2">
+            Click to add/remove optional room types from your quote
+          </p>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+            {Object.keys(optionalRooms).map((roomType) => {
+              const isHidden = hiddenRooms.has(roomType);
+              return (
+                <Button
+                  key={roomType}
+                  variant={isHidden ? "outline" : "default"}
+                  size="sm"
+                  onClick={() => toggleOptionalRoom(roomType)}
+                  className={`justify-start h-auto py-2 px-3 ${
+                    isHidden 
+                      ? "text-slate-600 border-slate-200 hover:bg-slate-50" 
+                      : "bg-blue-600 hover:bg-blue-700 text-white"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 w-full">
+                    {isHidden ? (
+                      <Plus className="h-4 w-4 flex-shrink-0" />
+                    ) : (
+                      <X className="h-4 w-4 flex-shrink-0" />
+                    )}
+                    <span className="text-xs font-medium truncate">{roomType}</span>
+                  </div>
+                </Button>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Calculations */}
       <Card className="border-0 shadow-sm bg-gradient-to-r from-blue-50 to-indigo-50 calculator-inputs">
         <CardHeader className="pb-3">
@@ -630,18 +636,18 @@ const QuoteCalculator = () => {
           </div>
           <div className="flex justify-between items-center">
             <span className="text-sm font-medium text-slate-700">Base Quote:</span>
-            <span className="text-sm font-semibold text-slate-900">${calculations.baseQuote.toLocaleString()}</span>
+            <span className="text-sm font-semibold text-slate-900">${calculations.baseQuote.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
           </div>
           <div className="flex justify-between items-center">
             <span className="text-sm font-medium text-slate-700">Variation:</span>
             <span className={`text-sm font-semibold ${calculations.variation >= 0 ? 'text-red-600' : 'text-green-600'}`}>
-              {calculations.variation >= 0 ? '+' : ''}${calculations.variation.toLocaleString()}
+              {calculations.variation >= 0 ? '+' : ''}${calculations.variation.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
           </div>
           <Separator />
           <div className="flex justify-between items-center">
             <span className="text-lg font-bold text-slate-900">Final Quote:</span>
-            <span className="text-2xl font-bold text-blue-600">${calculations.finalQuote.toLocaleString()}</span>
+            <span className="text-2xl font-bold text-blue-600">${calculations.finalQuote.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
           </div>
         </CardContent>
       </Card>

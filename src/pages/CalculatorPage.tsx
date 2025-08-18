@@ -30,7 +30,7 @@ const CalculatorPage = () => {
           </div>
 
           {/* Footer Note */}
-          <div className="mt-8 text-center">
+          <div className="mt-8 text-center no-print">
             <p className="text-sm text-slate-500">
               This is an estimate only.
             </p>
