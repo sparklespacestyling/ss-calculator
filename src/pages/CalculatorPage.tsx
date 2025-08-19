@@ -12,7 +12,7 @@ const CalculatorPage = () => {
             <img 
               src={logoHeader} 
               alt="Sparkle Space Logo" 
-              className="h-24 object-contain"
+              className="h-12 object-contain"
               onError={(e) => {
                 console.error('Logo header failed to load, falling back to text');
                 const target = e.target as HTMLImageElement;
@@ -32,7 +32,7 @@ const CalculatorPage = () => {
       <main className="px-4 py-8">
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-8">
-            <h2 className="text-3xl font-bold text-slate-900 mb-4">Property Styling Quote Calculator</h2>
+            <h2 className="text-3xl font-bold text-slate-900 mb-4">Quote Calculator</h2>
           </div>
           
           <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
