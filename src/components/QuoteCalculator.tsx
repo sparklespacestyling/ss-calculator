@@ -5,7 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { Calculator, Home, Printer, Plus, X, MapPin, RefreshCw } from 'lucide-react';
+import { Calculator, Home, Printer, Plus, X, MapPin, RefreshCw, Database } from 'lucide-react';
 import AddressAutocomplete from '@/components/ui/address-autocomplete-modern';
 import logoHeader from '/sparkle-space-logo-header.png';
 
@@ -139,6 +139,9 @@ const QuoteCalculator = () => {
   const [distanceError, setDistanceError] = useState<string | null>(null);
   const [lastCalculatedAddress, setLastCalculatedAddress] = useState<string>('');
   const [isListingPriceCustomized, setIsListingPriceCustomized] = useState(false);
+  const [isSubmittingToNotion, setIsSubmittingToNotion] = useState(false);
+  const [notionSubmissionStatus, setNotionSubmissionStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [notionErrorMessage, setNotionErrorMessage] = useState<string>('');
 
 
   // Auto-adjust access difficulty, listing price, and Master Wardrobe based on property type
@@ -358,6 +361,39 @@ const QuoteCalculator = () => {
 
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleSendToNotion = async () => {
+    try {
+      setIsSubmittingToNotion(true);
+      setNotionSubmissionStatus('idle');
+      setNotionErrorMessage('');
+
+      const response = await fetch('https://xfnbyqqejpnfupbkspck.supabase.co/functions/v1/submit-quote', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({
+          formData,
+          calculations
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      setNotionSubmissionStatus('success');
+      setTimeout(() => setNotionSubmissionStatus('idle'), 3000); // Clear success message after 3 seconds
+    } catch (error) {
+      console.error('Failed to submit to Notion:', error);
+      setNotionSubmissionStatus('error');
+      setNotionErrorMessage(error instanceof Error ? error.message : 'Unknown error occurred');
+    } finally {
+      setIsSubmittingToNotion(false);
+    }
   };
 
   return (
@@ -861,8 +897,8 @@ const QuoteCalculator = () => {
         </CardContent>
       </Card>
 
-      {/* Print Button */}
-      <div className="text-center no-print">
+      {/* Action Buttons */}
+      <div className="flex flex-col sm:flex-row gap-3 justify-center items-center no-print">
         <Button 
           onClick={handlePrint}
           className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2"
@@ -870,7 +906,44 @@ const QuoteCalculator = () => {
           <Printer className="h-4 w-4 mr-2" />
           Print Quote
         </Button>
+        
+        <Button 
+          onClick={handleSendToNotion}
+          disabled={isSubmittingToNotion || !formData.propertyType}
+          className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white px-6 py-2"
+        >
+          {isSubmittingToNotion ? (
+            <>
+              <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2"></div>
+              Sending...
+            </>
+          ) : (
+            <>
+              <Database className="h-4 w-4 mr-2" />
+              Send to Notion
+            </>
+          )}
+        </Button>
       </div>
+
+      {/* Notion Status Messages */}
+      {notionSubmissionStatus === 'success' && (
+        <div className="text-center no-print">
+          <div className="inline-flex items-center gap-2 px-4 py-2 bg-green-100 text-green-800 rounded-lg">
+            <div className="w-2 h-2 bg-green-600 rounded-full"></div>
+            Quote successfully sent to Notion!
+          </div>
+        </div>
+      )}
+      
+      {notionSubmissionStatus === 'error' && (
+        <div className="text-center no-print">
+          <div className="inline-flex items-center gap-2 px-4 py-2 bg-red-100 text-red-800 rounded-lg">
+            <div className="w-2 h-2 bg-red-600 rounded-full"></div>
+            Failed to send to Notion: {notionErrorMessage}
+          </div>
+        </div>
+      )}
       </div>
     </>
   );
