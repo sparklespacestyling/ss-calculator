@@ -43,6 +43,8 @@ Deno.serve(async (req) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
+  console.log('Submit quote function called - JWT verification disabled')
+
   try {
     const notionToken = Deno.env.get('NOTION_TOKEN')
     const databaseId = Deno.env.get('NOTION_DATABASE_ID')

@@ -1,7 +1,7 @@
 project_id = "xfnbyqqejpnfupbkspck"
 [functions.submit-quote]
 enabled = true
-verify_jwt = true
+verify_jwt = false
 import_map = "./functions/submit-quote/deno.json"
 # Uncomment to specify a custom file path to the entrypoint.
 # Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
@@ -15,3 +15,15 @@ enabled = true
 verify_jwt = false
 import_map = "./functions/quotient-webhook/deno.json"
 entrypoint = "./functions/quotient-webhook/index.ts"
+
+[functions.xero-webhook]
+enabled = true
+verify_jwt = false
+import_map = "./functions/xero-webhook/deno.json"
+entrypoint = "./functions/xero-webhook/index.ts"
+
+[functions.xero-oauth]
+enabled = true
+verify_jwt = false
+import_map = "./functions/xero-oauth/deno.json"
+entrypoint = "./functions/xero-oauth/index.ts"
