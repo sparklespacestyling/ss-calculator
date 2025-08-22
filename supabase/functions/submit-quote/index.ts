@@ -64,7 +64,7 @@ Deno.serve(async (req) => {
       properties: {
         'Date Sent': {
           date: {
-            start: new Date().toISOString(),
+            start: new Date().toISOString().split('T')[0],
           },
         },
         'Property Address': {
@@ -78,6 +78,15 @@ Deno.serve(async (req) => {
         },
         'Amount (+GST)': {
           number: data.calculations.finalQuote,
+        },
+        'Follow-Up': {
+          rich_text: [
+            {
+              text: {
+                content: 'autosent from calculator, UPDATE this!',
+              },
+            },
+          ],
         },
       },
     })
