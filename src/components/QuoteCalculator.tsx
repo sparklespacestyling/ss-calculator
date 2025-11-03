@@ -5,9 +5,10 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { Calculator, Home, Printer, Plus, X, MapPin, RefreshCw, Database } from 'lucide-react';
+import { Calculator, Home, Printer, Plus, X, MapPin, RefreshCw, Database, RotateCcw } from 'lucide-react';
 import AddressAutocomplete from '@/components/ui/address-autocomplete-modern';
 import logoHeader from '/sparkle-space-logo-header.png';
+import { supabase } from '@/lib/supabase';
 
 interface RoomData {
   [key: string]: {
@@ -253,7 +254,6 @@ const QuoteCalculator = () => {
         );
       });
     } catch (error) {
-      console.error('Error calculating distance:', error);
       setIsDistanceLoading(false);
       setDistanceError(error instanceof Error ? error.message : 'Failed to calculate distance');
       // Don't reset the distance field, let user enter manually
@@ -359,6 +359,33 @@ const QuoteCalculator = () => {
     });
   };
 
+  const handleReset = () => {
+    // Reset all form data
+    setFormData({
+      propertyType: '',
+      styling: 'Full',
+      propertyAddress: '',
+      distanceFromWarehouse: 0,
+      listingPrice: 0,
+      accessDifficulty: '',
+      roomRate: 400,
+      rooms: allRooms,
+    });
+
+    // Reset all flags
+    setIsRoomRateCustomized(false);
+    setIsAccessDifficultyCustomized(false);
+    setIsListingPriceCustomized(false);
+    setIsDistanceAutoCalculated(false);
+    setDistanceError(null);
+    setLastCalculatedAddress('');
+    setNotionSubmissionStatus('idle');
+    setNotionErrorMessage('');
+
+    // Reset hidden rooms to default
+    setHiddenRooms(new Set(Object.keys(optionalRooms)));
+  };
+
   const handlePrint = () => {
     window.print();
   };
@@ -369,6 +396,7 @@ const QuoteCalculator = () => {
       setNotionSubmissionStatus('idle');
       setNotionErrorMessage('');
 
+      // Send to Notion via edge function
       const response = await fetch('https://xfnbyqqejpnfupbkspck.supabase.co/functions/v1/submit-quote', {
         method: 'POST',
         headers: {
@@ -385,10 +413,46 @@ const QuoteCalculator = () => {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
+      // Also save to Supabase database (to keep it active)
+      if (supabase) {
+        try {
+          // Default UUIDs for dummy records
+          const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001';
+          const DEFAULT_CLIENT_ID = '00000000-0000-0000-0000-000000000002';
+
+          // Generate quote number using timestamp
+          const quoteNumber = `Q-${Date.now()}`;
+
+          const { error: dbError } = await supabase.from('quotes').insert({
+            quote_number: quoteNumber,
+            user_id: DEFAULT_USER_ID,
+            client_id: DEFAULT_CLIENT_ID,
+            property_type: formData.propertyType || 'Unknown',
+            styling_type: formData.styling || 'Full',
+            property_address: formData.propertyAddress || 'Not provided',
+            distance_from_warehouse: formData.distanceFromWarehouse || 0,
+            listing_price: formData.listingPrice || 0,
+            access_difficulty: formData.accessDifficulty || 'Standard',
+            room_rate: formData.roomRate || 400,
+            room_data: formData.rooms || {},
+            equivalent_room_count: calculations.equivalentRooms || 0,
+            base_quote: calculations.baseQuote || 0,
+            variation: calculations.variation || 0,
+            final_quote: calculations.finalQuote || 0,
+            status: 'pending'
+          });
+
+          if (dbError) {
+            // Don't fail the whole operation if database save fails
+          }
+        } catch (dbError) {
+          // Continue even if database save fails
+        }
+      }
+
       setNotionSubmissionStatus('success');
       setTimeout(() => setNotionSubmissionStatus('idle'), 3000); // Clear success message after 3 seconds
     } catch (error) {
-      console.error('Failed to submit to Notion:', error);
       setNotionSubmissionStatus('error');
       setNotionErrorMessage(error instanceof Error ? error.message : 'Unknown error occurred');
     } finally {
@@ -575,6 +639,20 @@ const QuoteCalculator = () => {
             <span className="print-final-quote" style={{color: '#16a34a', fontWeight: 'bold'}}>${calculations.finalQuote.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
           </div>
         </div>
+      </div>
+
+      {/* Calculator Header with Reset Button */}
+      <div className="flex justify-between items-center no-print">
+        <h1 className="text-2xl font-bold text-slate-900">Quote Calculator</h1>
+        <Button
+          onClick={handleReset}
+          variant="ghost"
+          size="sm"
+          className="text-slate-600 hover:text-slate-900"
+          title="Reset calculator"
+        >
+          <RotateCcw className="h-4 w-4" />
+        </Button>
       </div>
 
       {/* Property Information */}
