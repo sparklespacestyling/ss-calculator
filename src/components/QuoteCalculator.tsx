@@ -141,7 +141,7 @@ const QuoteCalculator = () => {
   const [lastCalculatedAddress, setLastCalculatedAddress] = useState<string>('');
   const [isListingPriceCustomized, setIsListingPriceCustomized] = useState(false);
   const [isSubmittingToNotion, setIsSubmittingToNotion] = useState(false);
-  const [notionSubmissionStatus, setNotionSubmissionStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [notionSubmissionStatus, setNotionSubmissionStatus] = useState<'idle' | 'success' | 'success-no-db' | 'error'>('idle');
   const [notionErrorMessage, setNotionErrorMessage] = useState<string>('');
 
 
@@ -414,6 +414,8 @@ const QuoteCalculator = () => {
       }
 
       // Also save to Supabase database (to keep it active)
+      let dbSaveFailed = false;
+
       if (supabase) {
         try {
           // Default UUIDs for dummy records
@@ -443,14 +445,17 @@ const QuoteCalculator = () => {
           });
 
           if (dbError) {
-            // Don't fail the whole operation if database save fails
+            dbSaveFailed = true;
           }
         } catch (dbError) {
-          // Continue even if database save fails
+          dbSaveFailed = true;
         }
+      } else {
+        dbSaveFailed = true;
       }
 
-      setNotionSubmissionStatus('success');
+      // Set status based on whether database save succeeded
+      setNotionSubmissionStatus(dbSaveFailed ? 'success-no-db' : 'success');
       setTimeout(() => setNotionSubmissionStatus('idle'), 3000); // Clear success message after 3 seconds
     } catch (error) {
       setNotionSubmissionStatus('error');
@@ -1013,7 +1018,16 @@ const QuoteCalculator = () => {
           </div>
         </div>
       )}
-      
+
+      {notionSubmissionStatus === 'success-no-db' && (
+        <div className="text-center no-print">
+          <div className="inline-flex items-center gap-2 px-4 py-2 bg-yellow-100 text-yellow-800 rounded-lg">
+            <div className="w-2 h-2 bg-yellow-600 rounded-full"></div>
+            Quote sent to Notion (not saved to database)
+          </div>
+        </div>
+      )}
+
       {notionSubmissionStatus === 'error' && (
         <div className="text-center no-print">
           <div className="inline-flex items-center gap-2 px-4 py-2 bg-red-100 text-red-800 rounded-lg">
